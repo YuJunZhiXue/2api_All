@@ -24,12 +24,12 @@ export default function Keys() {
       <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-6 flex items-center justify-between">
         <div>
           <h2 className="text-xl font-medium text-zinc-100 mb-2 flex items-center">
-            <Key className="w-5 h-5 mr-3 text-yellow-400" /> API Keys
+            <Key className="w-5 h-5 mr-3 text-yellow-400" /> 接口密钥
           </h2>
-          <p className="text-zinc-400 text-sm">Manage keys for accessing the /v1/chat/completions endpoint.</p>
+          <p className="text-zinc-400 text-sm">用于访问 /v1/chat/completions 的调用密钥。</p>
         </div>
         <button onClick={handleGenerate} className="bg-yellow-400/10 text-yellow-400 border border-yellow-400/50 hover:bg-yellow-400/20 px-4 py-2 rounded font-medium flex items-center transition-colors">
-          <Plus className="w-4 h-4 mr-2" /> Generate Key
+          <Plus className="w-4 h-4 mr-2" /> 生成密钥
         </button>
       </div>
 
@@ -37,10 +37,10 @@ export default function Keys() {
         <table className="w-full text-left">
           <thead className="bg-zinc-950 border-b border-zinc-800 text-sm text-zinc-400">
             <tr>
-              <th className="px-6 py-4 font-medium">API Key</th>
-              <th className="px-6 py-4 font-medium">Total Calls</th>
-              <th className="px-6 py-4 font-medium">Status</th>
-              <th className="px-6 py-4 font-medium w-24">Actions</th>
+              <th className="px-6 py-4 font-medium">密钥</th>
+              <th className="px-6 py-4 font-medium">累计调用</th>
+              <th className="px-6 py-4 font-medium">状态</th>
+              <th className="px-6 py-4 font-medium w-24">操作</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-800">
@@ -48,7 +48,7 @@ export default function Keys() {
               <tr key={k.key} className="hover:bg-zinc-800/30 transition-colors">
                 <td className="px-6 py-4 font-mono text-[#00FF41] select-all">{k.key}</td>
                 <td className="px-6 py-4 font-mono text-zinc-300">{k.total_calls}</td>
-                <td className="px-6 py-4 text-zinc-400 text-sm">{k.is_active ? 'Active' : 'Revoked'}</td>
+                <td className="px-6 py-4 text-zinc-400 text-sm">{k.is_active ? '有效' : '已吊销'}</td>
                 <td className="px-6 py-4">
                   <button onClick={() => handleDelete(k.key)} className="text-red-400 hover:text-red-300 p-1">
                     <Trash2 className="w-4 h-4" />
@@ -57,7 +57,7 @@ export default function Keys() {
               </tr>
             ))}
             {keys.length === 0 && (
-              <tr><td colSpan={4} className="px-6 py-8 text-center text-zinc-500">No API Keys generated yet.</td></tr>
+              <tr><td colSpan={4} className="px-6 py-8 text-center text-zinc-500">暂无接口密钥。</td></tr>
             )}
           </tbody>
         </table>

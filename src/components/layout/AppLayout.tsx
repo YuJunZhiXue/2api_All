@@ -6,8 +6,8 @@ const NAV_ITEMS = [
   { path: '/', label: '控制台', icon: Activity },
   { path: '/sites', label: '站点管理', icon: Globe },
   { path: '/sessions', label: '会话池', icon: Shield },
-  { path: '/keys', label: 'API 密钥', icon: Key },
-  { path: '/magic', label: '智能解析 (Magic)', icon: Wand2 },
+  { path: '/keys', label: '接口密钥', icon: Key },
+  { path: '/magic', label: '智能解析', icon: Wand2 },
 ];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {

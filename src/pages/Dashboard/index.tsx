@@ -12,14 +12,14 @@ export default function Dashboard() {
   }, [fetchStatus]);
 
   if (!status) {
-    return <div className="text-zinc-500 animate-pulse font-mono">Initializing system...</div>;
+    return <div className="text-zinc-500 animate-pulse font-mono">系统初始化中...</div>;
   }
 
   const CARDS = [
     { label: 'QPS', value: status.qps, icon: Zap, color: 'text-yellow-400' },
-    { label: 'Success Rate', value: status.successRate, icon: Activity, color: 'text-[#00FF41]' },
-    { label: 'Active Sessions', value: status.activeSessions, icon: ShieldCheck, color: 'text-blue-400' },
-    { label: 'Total Sites', value: status.totalSites, icon: Server, color: 'text-purple-400' },
+    { label: '成功率', value: status.successRate, icon: Activity, color: 'text-[#00FF41]' },
+    { label: '活跃会话', value: status.activeSessions, icon: ShieldCheck, color: 'text-blue-400' },
+    { label: '站点总数', value: status.totalSites, icon: Server, color: 'text-purple-400' },
   ];
 
   return (
@@ -40,17 +40,17 @@ export default function Dashboard() {
 
       <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
         <div className="border-b border-zinc-800 bg-zinc-900/50 px-6 py-4">
-          <h2 className="text-zinc-300 font-medium">Terminal Logs</h2>
+          <h2 className="text-zinc-300 font-medium">终端日志</h2>
         </div>
         <div className="p-6 h-64 overflow-y-auto font-mono text-sm text-zinc-500 space-y-2 bg-[#0a0a0a]">
-          <div><span className="text-[#00FF41]">root@2api:~#</span> systemctl status 2api</div>
-          <div className="text-zinc-300">● 2api.service - 2api Gateway</div>
-          <div className="text-zinc-300">   Loaded: loaded (/etc/systemd/system/2api.service; enabled; preset: enabled)</div>
-          <div className="text-[#00FF41]">   Active: active (running) since Sun 2026-04-14 00:00:00 UTC</div>
-          <div className="text-zinc-300">   Memory: 184.2M (Limit: 1.0G)</div>
-          <div className="text-zinc-300">   CGroup: /system.slice/2api.service</div>
-          <div className="mt-4"><span className="text-zinc-400">[2026-04-14 02:40:12]</span> INFO: Handled 14 requests seamlessly.</div>
-          <div><span className="text-zinc-400">[2026-04-14 02:40:15]</span> <span className="text-yellow-400">WARN</span>: Session pool for site "chatgpt" is running low (1 active).</div>
+          <div><span className="text-[#00FF41]">root@2api:~#</span> 查看 2api 服务状态</div>
+          <div className="text-zinc-300">● 2api 服务 - 2api 网关</div>
+          <div className="text-zinc-300">   已加载: 系统服务（已启用）</div>
+          <div className="text-[#00FF41]">   状态: 运行中（自 2026-04-14 00:00:00 UTC 起）</div>
+          <div className="text-zinc-300">   内存: 184.2M（上限: 1.0G）</div>
+          <div className="text-zinc-300">   进程组: 系统切片</div>
+          <div className="mt-4"><span className="text-zinc-400">[2026-04-14 02:40:12]</span> 信息: 已平滑处理 14 次请求。</div>
+          <div><span className="text-zinc-400">[2026-04-14 02:40:15]</span> <span className="text-yellow-400">警告</span>: 站点 “chatgpt” 的会话池偏低（当前 1 个可用）。</div>
         </div>
       </div>
     </div>

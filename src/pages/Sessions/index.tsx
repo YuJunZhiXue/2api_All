@@ -35,24 +35,24 @@ export default function Sessions() {
     <div className="space-y-8">
       <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-6">
         <h2 className="text-xl font-medium text-zinc-100 mb-6 flex items-center">
-          <Shield className="w-5 h-5 mr-3 text-blue-400" /> Manage Session Pool
+          <Shield className="w-5 h-5 mr-3 text-blue-400" /> 会话池管理
         </h2>
         <form onSubmit={handleSubmit} className="space-y-4 max-w-2xl">
           <div>
-            <label className="block text-sm text-zinc-400 mb-1">Target Site</label>
+            <label className="block text-sm text-zinc-400 mb-1">目标站点</label>
             <select required value={form.site_id} onChange={e => setForm({...form, site_id: e.target.value})} className="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-400">
-              <option value="">Select a site...</option>
+              <option value="">请选择站点...</option>
               {sites.map(site => (
                 <option key={site.id} value={site.id}>{site.name} ({site.url})</option>
               ))}
             </select>
           </div>
           <div>
-            <label className="block text-sm text-zinc-400 mb-1">Cookie JSON</label>
+            <label className="block text-sm text-zinc-400 mb-1">浏览器凭证 JSON（数组）</label>
             <textarea required value={form.cookie_json} onChange={e => setForm({...form, cookie_json: e.target.value})} className="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-400 font-mono text-sm h-32" placeholder='[{"name": "session_id", "value": "...", "domain": "..."}]' />
           </div>
           <button type="submit" className="mt-4 bg-blue-400/10 text-blue-400 border border-blue-400/50 hover:bg-blue-400/20 px-4 py-2 rounded font-medium flex items-center transition-colors">
-            <Plus className="w-4 h-4 mr-2" /> Add Session
+            <Plus className="w-4 h-4 mr-2" /> 添加会话
           </button>
         </form>
       </div>
@@ -61,10 +61,10 @@ export default function Sessions() {
         <table className="w-full text-left">
           <thead className="bg-zinc-950 border-b border-zinc-800 text-sm text-zinc-400">
             <tr>
-              <th className="px-6 py-4 font-medium">Status</th>
-              <th className="px-6 py-4 font-medium">Site Model</th>
-              <th className="px-6 py-4 font-medium">Last Used</th>
-              <th className="px-6 py-4 font-medium w-24">Actions</th>
+              <th className="px-6 py-4 font-medium">状态</th>
+              <th className="px-6 py-4 font-medium">站点模型</th>
+              <th className="px-6 py-4 font-medium">最近使用</th>
+              <th className="px-6 py-4 font-medium w-24">操作</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-800">
@@ -73,7 +73,7 @@ export default function Sessions() {
                 <td className="px-6 py-4">
                   <div className="flex items-center">
                     <span className={clsx("w-2 h-2 rounded-full mr-2 animate-pulse", session.is_active ? "bg-[#00FF41]" : "bg-red-500")} />
-                    <span className="text-zinc-300 text-sm">{session.is_active ? 'Alive' : 'Dead'}</span>
+                    <span className="text-zinc-300 text-sm">{session.is_active ? '存活' : '失效'}</span>
                   </div>
                 </td>
                 <td className="px-6 py-4 font-mono text-zinc-200">{session.site_name}</td>
@@ -86,7 +86,7 @@ export default function Sessions() {
               </tr>
             ))}
             {sessions.length === 0 && (
-              <tr><td colSpan={4} className="px-6 py-8 text-center text-zinc-500">No sessions available.</td></tr>
+              <tr><td colSpan={4} className="px-6 py-8 text-center text-zinc-500">暂无会话。</td></tr>
             )}
           </tbody>
         </table>

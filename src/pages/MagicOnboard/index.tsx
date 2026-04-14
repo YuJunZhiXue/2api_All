@@ -40,13 +40,13 @@ export default function MagicOnboard() {
     <div className="space-y-8">
       <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-6">
         <h2 className="text-xl font-medium text-zinc-100 mb-2 flex items-center">
-          <Wand2 className="w-5 h-5 mr-3 text-purple-400" /> 智能解析抓包 (Magic Onboard)
+          <Wand2 className="w-5 h-5 mr-3 text-purple-400" /> 智能解析抓包
         </h2>
-        <p className="text-zinc-400 text-sm mb-6">输入任何带有大模型的公网网站 URL。系统将自动启动无头浏览器，进行抓包分析、启发式表单寻找、自动注册/登录，并将完整的 Session 和 Cookie 转换为可用的 2api 节点。</p>
+        <p className="text-zinc-400 text-sm mb-6">输入任何带有大模型的公网网站网址。系统将自动启动无头浏览器，进行抓包分析、启发式表单寻找、自动注册/登录，并将完整的会话与浏览器凭证转换为可用的 2api 节点。</p>
         
         <form onSubmit={handleAnalyze} className="space-y-4 max-w-2xl">
           <div>
-            <label className="block text-sm text-zinc-400 mb-1">目标网站 URL</label>
+            <label className="block text-sm text-zinc-400 mb-1">目标网站网址</label>
             <input 
               required 
               value={form.url} 
@@ -97,18 +97,18 @@ export default function MagicOnboard() {
             <CheckCircle2 className="w-5 h-5 mr-2" /> 解析成功！站点已入库
           </h3>
           <div className="space-y-3 font-mono text-sm text-zinc-300">
-            <p><span className="text-zinc-500">生成站点模型 ID:</span> {result.siteName}</p>
-            <p><span className="text-zinc-500">生成会话 ID:</span> {result.sessionId}</p>
+            <p><span className="text-zinc-500">生成站点模型编号:</span> {result.siteName}</p>
+            <p><span className="text-zinc-500">生成会话编号:</span> {result.sessionId}</p>
             <p><span className="text-zinc-500">执行日志:</span> {result.logs}</p>
             <div className="mt-4 border-t border-zinc-800 pt-4">
-              <p className="text-zinc-500 mb-2">嗅探到的 API 端点 ({result.apiCandidates?.length || 0} 个):</p>
+              <p className="text-zinc-500 mb-2">嗅探到的接口端点 ({result.apiCandidates?.length || 0} 个):</p>
               <ul className="list-disc pl-5 space-y-1 text-xs">
                 {result.apiCandidates?.map((api: any, i: number) => (
                   <li key={i}><span className="text-purple-400">[{api.method}]</span> {api.url}</li>
                 ))}
               </ul>
             </div>
-            <p className="mt-4 text-xs text-zinc-400">现在您可以前往「站点管理」和「会话池」查看生成的记录，或者生成一个 API 密钥直接发起对话请求。</p>
+            <p className="mt-4 text-xs text-zinc-400">现在您可以前往「站点管理」和「会话池」查看生成的记录，或者生成一个接口密钥直接发起对话请求。</p>
           </div>
         </div>
       )}
