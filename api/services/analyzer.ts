@@ -3,6 +3,7 @@ import puppeteer, { Page } from 'puppeteer';
 export async function analyzeAndOnboard(url: string, email?: string, password?: string) {
   const browser = await puppeteer.launch({
     headless: true,
+    executablePath: '/usr/bin/google-chrome',
     args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--single-process']
   });
 
