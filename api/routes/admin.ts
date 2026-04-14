@@ -1,6 +1,7 @@
 import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { getDb } from '../db.js';
+import { analyzeAndOnboard } from '../services/analyzer.js';
 
 const router = express.Router();
 
@@ -125,6 +126,50 @@ router.delete('/keys/:key', async (req, res) => {
     await db.run('DELETE FROM api_keys WHERE key = ?', [req.params.key]);
     res.json({ success: true });
   } catch (error) {
+    res.status(500).json({ success: false, error: String(error) });
+  }
+});
+
+// Auto Analyze & Onboard
+router.post('/analyze', async (req, res) => {
+  try {
+    const { url, email, password } = req.body;
+    if (!url) {
+      return res.status(400).json({ success: false, error: "URL 是必填项" });
+    }
+
+    const result = await analyzeAndOnboard(url, email, password);
+
+    if (!result.success || !result.data) {
+      return res.status(500).json({ success: false, error: result.error });
+    }
+
+    const db = await getDb();
+    const siteId = uuidv4();
+    const siteName = new URL(url).hostname.replace('www.', '').split('.')[0] + '-auto';
+    
+    // Save the analyzed site
+    const domSelectorsJson = JSON.stringify(result.data.domSelectors);
+    await db.run('INSERT INTO sites (id, name, url, dom_selectors_json) VALUES (?, ?, ?, ?)', [siteId, siteName, url, domSelectorsJson]);
+
+    // Save the captured session
+    const sessionId = uuidv4();
+    const cookieJson = JSON.stringify(result.data.cookies || []);
+    await db.run('INSERT INTO sessions (id, site_id, cookie_json, is_active, last_used_at) VALUES (?, ?, ?, 1, datetime("now"))', [sessionId, siteId, cookieJson]);
+
+    res.json({ 
+      success: true, 
+      data: {
+        siteId,
+        siteName,
+        sessionId,
+        logs: result.data.logs,
+        apiCandidates: result.data.apiCandidates
+      } 
+    });
+
+  } catch (error) {
+    console.error(error);
     res.status(500).json({ success: false, error: String(error) });
   }
 });

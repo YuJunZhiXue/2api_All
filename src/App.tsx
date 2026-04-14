@@ -4,6 +4,7 @@ import Dashboard from "@/pages/Dashboard";
 import Sites from "@/pages/Sites";
 import Sessions from "@/pages/Sessions";
 import Keys from "@/pages/Keys";
+import MagicOnboard from "@/pages/MagicOnboard";
 
 export default function App() {
   return (
@@ -14,6 +15,7 @@ export default function App() {
           <Route path="/sites" element={<Sites />} />
           <Route path="/sessions" element={<Sessions />} />
           <Route path="/keys" element={<Keys />} />
+          <Route path="/magic" element={<MagicOnboard />} />
         </Routes>
       </AppLayout>
     </Router>

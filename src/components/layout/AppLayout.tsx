@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Activity, Globe, Shield, Key } from 'lucide-react';
+import { Activity, Globe, Shield, Key, Wand2 } from 'lucide-react';
 import { clsx } from 'clsx';
 
 const NAV_ITEMS = [
@@ -7,6 +7,7 @@ const NAV_ITEMS = [
   { path: '/sites', label: '站点管理', icon: Globe },
   { path: '/sessions', label: '会话池', icon: Shield },
   { path: '/keys', label: 'API 密钥', icon: Key },
+  { path: '/magic', label: '智能解析 (Magic)', icon: Wand2 },
 ];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
