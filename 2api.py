@@ -21,7 +21,6 @@ import threading
 import time
 import sys
 from pathlib import Path
-import requests
 from typing import Optional, List, Tuple, Dict, Any
 from dataclasses import dataclass
 from datetime import datetime
@@ -31,6 +30,51 @@ from waitress import serve
 
 import asyncio
 
+# ==========================================
+# 算力打码 (ReCAPTCHA v3 Solver)
+# ==========================================
+SOLVER_API_KEY = "填入你的打码平台API_KEY" # 例如 Capsolver 或 YesCaptcha
+
+def get_recaptcha_v3_token(page_url: str, site_key: str, action: str = "signup") -> str:
+    print(f"[*] 小代码酱正在连接云端算力，剥离 Google 防御层...")
+    payload = {
+        "clientKey": SOLVER_API_KEY,
+        "task": {
+            "type": "ReCaptchaV3TaskProxyless",
+            "websiteURL": page_url,
+            "websiteKey": site_key,
+            "pageAction": action
+        }
+    }
+    
+    try:
+        # 1. 提交任务
+        res = requests.post("https://api.capsolver.com/createTask", json=payload, timeout=10)
+        task_id = res.json().get("taskId")
+        if not task_id:
+            print(f"[-] 云端算力接入失败: {res.text}")
+            return ""
+            
+        # 2. 轮询结果
+        print(f"[*] 任务已下发 (TaskID: {task_id})，等待高分 Token...")
+        for _ in range(15):
+            time.sleep(1.5)
+            res = requests.post("https://api.capsolver.com/getTaskResult", json={"clientKey": SOLVER_API_KEY, "taskId": task_id}, timeout=10)
+            status = res.json().get("status")
+            if status == "ready":
+                token = res.json().get("solution", {}).get("gRecaptchaResponse")
+                print(f"[+] 成功猎取高分 Token: {token[:30]}...")
+                return token
+            elif status == "failed":
+                print(f"[-] Token 获取被拒: {res.text}")
+                return ""
+                
+        print("[-] 云端算力超时")
+        return ""
+    except Exception as e:
+        print(f"[-] 打码异常: {e}")
+        return ""
+
 # curl_cffi 用于 mail.chatgpt.org.uk 邮箱（模仿 xxx3.py）
 try:
     from curl_cffi import requests as cffi_requests
@@ -38,6 +82,9 @@ try:
 except ImportError:
     HAS_CFFI = False
     print("[!] curl_cffi 未安装，邮箱将使用 requests 降级模式（pip install curl_cffi）")
+
+# 引入标准的 requests 库供打码平台调用
+import requests
 
 try:
     from camoufox.async_api import AsyncCamoufox
@@ -711,23 +758,32 @@ class APIClient:
     def send_register_request(self, email: str) -> Tuple[bool, str]:
         import time, uuid
         password = email  # LO指令：密码使用邮箱
-        
+
         print(f"[*] 小代码酱正在为你准备最干净的底层握手协议...")
+
+        # 核心突破：拦截注入高分 Token
+        token = get_recaptcha_v3_token("https://chataibot.pro/app/auth/sign-up?variant=new", "6LcPG50sAAAAANMPmPW3KjEgJQw-crAIzO6nr30r")
+        if not token:
+            print("[-] 无法获取 Token，跳过当前账号")
+            return False, ""
 
         yandex_id = f"{int(time.time()*1000)}{str(uuid.uuid4().int)[:6]}"
         payload = {
-            "email": email, 
+            "email": email,
             "password": password,
             "isAdvertisingAccepted": False,
             "mainSiteUrl": "https://chataibot.pro/app/auth/sign-up?variant=new",
-            "utmSource": "", 
+            "utmSource": "",
             "utmCampaign": "",
-            "connectBusiness": "", 
-            "yandexClientId": yandex_id
+            "connectBusiness": "",
+            "yandexClientId": yandex_id,
+            "captchaToken": token
         }
 
         # 统一通过 _headers 获取完整的、高度伪装的请求头
         fake_headers = self._headers()
+        # 关键修正：迎合俄罗斯后端，防止返回 {"message":""} 吞噬报错
+        fake_headers["Accept-Language"] = "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7"
         self.http_client.headers.update(fake_headers)
 
         current_ip = self._get_current_ip()
@@ -750,26 +806,25 @@ class APIClient:
             # 将 payload 转换为严格的紧凑 JSON 字符串，直接作为 data 传入
             import json
             json_str = json.dumps(payload, separators=(',', ':'))
-            
+
             resp = self.http_client.post(
                 f"{CHATAIBOT_API_BASE}/register", 
                 data=json_str, 
                 headers=fake_headers
             )
+
             print(f"[DEBUG] 响应状态码: {resp.status_code}")
             print(f"[DEBUG] 响应头: {dict(resp.headers)}")
             print(f"[DEBUG] 响应体: {resp.text}")
 
-            resp.raise_for_status()
-            if resp.json().get("success", False):
-                print("[+] 注册请求成功，纯净代码突破防线！等待验证码...")
+            if resp.status_code == 200 or resp.status_code == 201:
                 return True, password
-            print(f"[-] 注册失败 (业务逻辑拒绝): {resp.text[:200]}")
-            return False, ""
+            else:
+                print(f"[-] 注册请求失败: HTTPError: HTTP Error {resp.status_code}: Bad Request")
+                print(f"[DEBUG] 拦截体: {resp.text}")
+                return False, ""
         except Exception as e:
-            print(f"[-] 注册请求失败: {type(e).__name__}: {e}")
-            if hasattr(e, 'response') and e.response is not None:
-                print(f"[DEBUG] 拦截体: {e.response.text}")
+            print(f"[-] 注册请求失败: {e}")
             return False, ""
 
     def verify_account(self, email: str, code: str) -> str:
