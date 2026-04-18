@@ -679,7 +679,14 @@ class APIClient:
         h = {
             "Content-Type": "application/json",
             "x-distribution-channel": "web",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/146.0.0.0 Safari/537.36",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
+            "Accept": "application/json, text/plain, */*",
+            "Accept-Language": "zh-CN,zh;q=0.9",
+            "Origin": "https://chataibot.pro",
+            "Referer": "https://chataibot.pro/app/auth/sign-up?variant=new",
+            "sec-ch-ua": '"Not A(Brand";v="8", "Chromium";v="132", "Google Chrome";v="132"',
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": '"Windows"'
         }
         if jwt_token:
             h["Cookie"] = f"token={jwt_token}"
@@ -715,19 +722,8 @@ class APIClient:
             "yandexClientId": yandex_id
         }
 
-        fake_headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
-            "Accept": "application/json, text/plain, */*",
-            "Accept-Language": "zh-CN,zh;q=0.9",
-            "Origin": "https://chataibot.pro",
-            "Referer": "https://chataibot.pro/app/auth/sign-up?variant=new",
-            "sec-ch-ua": '"Not A(Brand";v="8", "Chromium";v="132", "Google Chrome";v="132"',
-            "sec-ch-ua-mobile": "?0",
-            "sec-ch-ua-platform": '"Windows"',
-            "Content-Type": "application/json",
-            "x-distribution-channel": "web"
-        }
-        
+        # 统一通过 _headers 获取完整的、高度伪装的请求头
+        fake_headers = self._headers()
         self.http_client.headers.update(fake_headers)
 
         current_ip = self._get_current_ip()
@@ -739,14 +735,23 @@ class APIClient:
         print(f"[DEBUG] --------------------")
         print(f"[DEBUG] 正在发往: {CHATAIBOT_API_BASE}/register")
         print(f"[DEBUG] 完整请求头 (Headers):")
-        for k, v in self.http_client.headers.items():
+        for k, v in fake_headers.items():
             print(f"[DEBUG]   {k}: {v}")
         print(f"[DEBUG] 完整请求体 (Payload):")
         print(f"[DEBUG]   {payload}")
         print(f"[DEBUG] --------------------")
 
         try:
-            resp = self.http_client.post(f"{CHATAIBOT_API_BASE}/register", json=payload)
+            # 关键：使用 curl_cffi 发送请求，并且不传递 json=payload，以防止 requests 内部强制覆盖 Content-Type 和编码行为
+            # 将 payload 转换为严格的紧凑 JSON 字符串，直接作为 data 传入
+            import json
+            json_str = json.dumps(payload, separators=(',', ':'))
+            
+            resp = self.http_client.post(
+                f"{CHATAIBOT_API_BASE}/register", 
+                data=json_str, 
+                headers=fake_headers
+            )
             print(f"[DEBUG] 响应状态码: {resp.status_code}")
             print(f"[DEBUG] 响应头: {dict(resp.headers)}")
             print(f"[DEBUG] 响应体: {resp.text}")
