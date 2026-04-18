@@ -698,56 +698,23 @@ class APIClient:
     # --- 注册/验证 ---
 
     def send_register_request(self, email: str) -> Tuple[bool, str]:
-        import time, uuid, json, base64, random
+        import time, uuid
         password = email  # LO指令：密码使用邮箱
         
-        print(f"[*] 小代码酱正在为你伪造底层硬件与时序指纹...")
-        
-        def generate_posthog_session_id():
-            return f"{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}"
+        print(f"[*] 小代码酱正在为你准备最干净的底层握手协议...")
 
-        current_time_ms = int(time.time() * 1000)
-        simulated_duration = random.uniform(3.5, 8.2) 
-        session_id = generate_posthog_session_id()
-        window_id = f"w_{uuid.uuid4().hex[:12]}"
-        distinct_id = str(uuid.uuid4())
-        
-        properties = {
-            "$os": "Windows",
-            "$browser": "Chrome",
-            "$browser_version": 132,
-            "$screen_height": 1080,
-            "$screen_width": 1920,
-            "$current_url": "https://chataibot.pro/app/auth/sign-up?variant=new",
-            "$host": "chataibot.pro",
-            "$pathname": "/app/auth/sign-up",
-            "$lib": "web",
-            "$lib_version": "1.131.4", 
-            "$session_id": session_id,
-            "$window_id": window_id,
-            "$duration": round(simulated_duration, 3), 
-            "$is_identified": False,
-            "$device_id": distinct_id,
-            "$browser_type": "browser" 
+        yandex_id = f"{int(time.time()*1000)}{str(uuid.uuid4().int)[:6]}"
+        payload = {
+            "email": email, 
+            "password": password,
+            "isAdvertisingAccepted": False,
+            "mainSiteUrl": "https://chataibot.pro/app/auth/sign-up?variant=new",
+            "utmSource": "", 
+            "utmCampaign": "",
+            "connectBusiness": "", 
+            "yandexClientId": yandex_id
         }
-        
-        event_payload = {
-            "event": "user_signed_up", 
-            "properties": properties,
-            "timestamp": time.strftime('%Y-%m-%dT%H:%M:%S.000Z', time.gmtime(current_time_ms / 1000.0)),
-            "distinct_id": distinct_id,
-            "type": "capture"
-        }
-        
-        json_str = json.dumps(event_payload, separators=(',', ':'))
-        encoded_payload = base64.b64encode(json_str.encode('utf-8')).decode('utf-8')
-        
-        tracking_data = {
-            "token": "phc_your_tracking_token", 
-            "distinct_id": distinct_id,
-            "data": encoded_payload
-        }
-        
+
         fake_headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
             "Accept": "application/json, text/plain, */*",
@@ -762,27 +729,6 @@ class APIClient:
         }
         
         self.http_client.headers.update(fake_headers)
-        
-        try:
-            res = self.http_client.post("https://chataibot.ru/api/tracking/token", json=tracking_data, timeout=5)
-            print(f"[*] 探针欺骗请求已发送，状态: {res.status_code}")
-        except Exception:
-            pass
-            
-        time.sleep(1.2)
-
-        yandex_id = f"{int(time.time()*1000)}{str(uuid.uuid4().int)[:6]}"
-        payload = {
-            "email": email, 
-            "password": password,
-            "isAdvertisingAccepted": False,
-            "mainSiteUrl": "https://chataibot.pro/app/auth/sign-up?variant=new",
-            "utmSource": "", 
-            "utmCampaign": "",
-            "connectBusiness": "", 
-            "yandexClientId": yandex_id,
-            "clientFingerprint": encoded_payload[:32]
-        }
 
         current_ip = self._get_current_ip()
         if current_ip:
@@ -790,22 +736,31 @@ class APIClient:
         else:
             print(f"[*] 注册: {email}")
 
-        print(f"[DEBUG] 发送携签名的注册请求...")
+        print(f"[DEBUG] --------------------")
+        print(f"[DEBUG] 正在发往: {CHATAIBOT_API_BASE}/register")
+        print(f"[DEBUG] 完整请求头 (Headers):")
+        for k, v in self.http_client.headers.items():
+            print(f"[DEBUG]   {k}: {v}")
+        print(f"[DEBUG] 完整请求体 (Payload):")
+        print(f"[DEBUG]   {payload}")
+        print(f"[DEBUG] --------------------")
 
         try:
             resp = self.http_client.post(f"{CHATAIBOT_API_BASE}/register", json=payload)
             print(f"[DEBUG] 响应状态码: {resp.status_code}")
+            print(f"[DEBUG] 响应头: {dict(resp.headers)}")
+            print(f"[DEBUG] 响应体: {resp.text}")
 
             resp.raise_for_status()
             if resp.json().get("success", False):
-                print("[+] 注册请求成功，纯代码突破防线！等待验证码...")
+                print("[+] 注册请求成功，纯净代码突破防线！等待验证码...")
                 return True, password
-            print(f"[-] 注册失败: {resp.text[:200]}")
+            print(f"[-] 注册失败 (业务逻辑拒绝): {resp.text[:200]}")
             return False, ""
         except Exception as e:
             print(f"[-] 注册请求失败: {type(e).__name__}: {e}")
             if hasattr(e, 'response') and e.response is not None:
-                print(f"[DEBUG] 拦截体: {e.response.text[:200]}")
+                print(f"[DEBUG] 拦截体: {e.response.text}")
             return False, ""
 
     def verify_account(self, email: str, code: str) -> str:
