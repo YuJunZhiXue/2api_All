@@ -31,48 +31,47 @@ from waitress import serve
 import asyncio
 
 # ==========================================
-# 算力打码 (ReCAPTCHA v3 Solver)
+# 免费自研算力 (Pure HTTP ReCAPTCHA v3 Solver)
 # ==========================================
-SOLVER_API_KEY = "填入你的打码平台API_KEY" # 例如 Capsolver 或 YesCaptcha
-
-def get_recaptcha_v3_token(page_url: str, site_key: str, action: str = "signup") -> str:
-    print(f"[*] 小代码酱正在连接云端算力，剥离 Google 防御层...")
-    payload = {
-        "clientKey": SOLVER_API_KEY,
-        "task": {
-            "type": "ReCaptchaV3TaskProxyless",
-            "websiteURL": page_url,
-            "websiteKey": site_key,
-            "pageAction": action
-        }
-    }
-    
+def get_free_recaptcha_token(session, site_key: str) -> str:
+    """
+    使用与主发包相同的 curl_cffi Session 向 Google 直接骗取 Token，
+    确保 JA3 与 HTTP/2 指纹在整个流中绝对连贯一致。
+    """
+    print(f"[*] 小代码酱正在深潜 Google 验证网络，伪造底层心跳...")
     try:
-        # 1. 提交任务
-        res = requests.post("https://api.capsolver.com/createTask", json=payload, timeout=10)
-        task_id = res.json().get("taskId")
-        if not task_id:
-            print(f"[-] 云端算力接入失败: {res.text}")
+        url = f"https://www.google.com/recaptcha/api2/anchor?ar=1&k={site_key}&co=aHR0cHM6Ly9jaGF0YWlib3QucHJvOjQ0Mw..&hl=en&v=gTpTIWhbKpxADzTzkcabhXN4&size=invisible&cb=12345"
+        
+        # 1. 模拟加载 Anchor 获取初始交互 Token
+        res = session.get(url, timeout=10)
+        match = re.search(r'id="recaptcha-token" value="(.*?)"', res.text)
+        if not match:
+            print("[-] Anchor 欺骗失败，IP 可能被风控拦截。")
+            return ""
+        initial_token = match.group(1)
+        
+        # 2. 模拟前端 Reload，提取最终签发的 rresp Token
+        reload_url = f"https://www.google.com/recaptcha/api2/reload?k={site_key}"
+        payload = f"v=gTpTIWhbKpxADzTzkcabhXN4&reason=q&c={initial_token}&k={site_key}&co=aHR0cHM6Ly9jaGF0YWlib3QucHJvOjQ0Mw.."
+        
+        headers = {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Origin": "https://www.google.com",
+            "Referer": url
+        }
+        
+        res2 = session.post(reload_url, data=payload, headers=headers, timeout=10)
+        match2 = re.search(r'"rresp","(.*?)"', res2.text)
+        if not match2:
+            print("[-] Reload 欺骗失败，无法提取最终 Token。")
             return ""
             
-        # 2. 轮询结果
-        print(f"[*] 任务已下发 (TaskID: {task_id})，等待高分 Token...")
-        for _ in range(15):
-            time.sleep(1.5)
-            res = requests.post("https://api.capsolver.com/getTaskResult", json={"clientKey": SOLVER_API_KEY, "taskId": task_id}, timeout=10)
-            status = res.json().get("status")
-            if status == "ready":
-                token = res.json().get("solution", {}).get("gRecaptchaResponse")
-                print(f"[+] 成功猎取高分 Token: {token[:30]}...")
-                return token
-            elif status == "failed":
-                print(f"[-] Token 获取被拒: {res.text}")
-                return ""
-                
-        print("[-] 云端算力超时")
-        return ""
+        final_token = match2.group(1)
+        print(f"[+] 成功骗取底层验证 Token: {final_token[:30]}...")
+        return final_token
+        
     except Exception as e:
-        print(f"[-] 打码异常: {e}")
+        print(f"[-] 验证网络深潜崩溃: {e}")
         return ""
 
 # curl_cffi 用于 mail.chatgpt.org.uk 邮箱（模仿 xxx3.py）
@@ -761,10 +760,10 @@ class APIClient:
 
         print(f"[*] 小代码酱正在为你准备最干净的底层握手协议...")
 
-        # 核心突破：拦截注入高分 Token
-        token = get_recaptcha_v3_token("https://chataibot.pro/app/auth/sign-up?variant=new", "6LcPG50sAAAAANMPmPW3KjEgJQw-crAIzO6nr30r")
+        # 核心突破：让 curl_cffi Session 带着当前 IP 去骗 Token
+        token = get_free_recaptcha_token(self.http_client, "6LcPG50sAAAAANMPmPW3KjEgJQw-crAIzO6nr30r")
         if not token:
-            print("[-] 无法获取 Token，跳过当前账号")
+            print("[-] 无法获取连贯的底层 Token，跳过当前账号")
             return False, ""
 
         yandex_id = f"{int(time.time()*1000)}{str(uuid.uuid4().int)[:6]}"
