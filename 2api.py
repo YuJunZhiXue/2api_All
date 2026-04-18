@@ -677,16 +677,20 @@ class APIClient:
 
     def _headers(self, jwt_token: str = "") -> Dict[str, str]:
         h = {
-            "Content-Type": "application/json",
-            "x-distribution-channel": "web",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
             "Accept": "application/json, text/plain, */*",
-            "Accept-Language": "zh-CN,zh;q=0.9",
+            "Accept-Encoding": "gzip, deflate, br, zstd",
+            "Accept-Language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+            "Content-Type": "application/json",
             "Origin": "https://chataibot.pro",
             "Referer": "https://chataibot.pro/app/auth/sign-up?variant=new",
-            "sec-ch-ua": '"Not A(Brand";v="8", "Chromium";v="132", "Google Chrome";v="132"',
-            "sec-ch-ua-mobile": "?0",
-            "sec-ch-ua-platform": '"Windows"'
+            "Sec-Ch-Ua": '"Not A(Brand";v="8", "Chromium";v="132", "Google Chrome";v="132"',
+            "Sec-Ch-Ua-Mobile": "?0",
+            "Sec-Ch-Ua-Platform": '"Windows"',
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "same-origin",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
+            "x-distribution-channel": "web"
         }
         if jwt_token:
             h["Cookie"] = f"token={jwt_token}"
