@@ -1397,10 +1397,23 @@ def start_pool(pool_size: int, init_count: int = 20) -> SimplePool:
                             headers=headers
                         )
                         if login_resp.status_code == 200 or login_resp.status_code == 201:
-                            data = login_resp.json()
-                            new_jwt = data.get("token", "")
+                            # The backend sometimes returns the token in a JSON body or a Set-Cookie header.
+                            # Let's check both
+                            new_jwt = ""
+                            try:
+                                data = login_resp.json()
+                                new_jwt = data.get("token", "")
+                            except Exception:
+                                pass
+                                
+                            if not new_jwt:
+                                # Try extracting from Set-Cookie header
+                                cookies = login_resp.cookies
+                                if "token" in cookies:
+                                    new_jwt = cookies["token"]
+                                    
                             if new_jwt:
-                                acc.jwt = new_jwt
+                                acc.token = new_jwt
                                 # 再次查询
                                 new_q = api_client.get_count(new_jwt)
                                 if new_q > 0:
