@@ -57,7 +57,7 @@ class TokenHarvester:
                     ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36"
                     co.set_user_agent(ua)
                     
-                    # 适配 Linux/Mac 环境，如果本地找不到浏览器，则需要手动指定
+                    # 适配 Linux/Mac/Windows 环境，如果本地找不到浏览器，则需要手动指定
                     import sys
                     import os
                     if sys.platform.startswith("linux"):
@@ -71,10 +71,27 @@ class TokenHarvester:
                             if os.path.exists(p):
                                 co.set_browser_path(p)
                                 break
+                    elif sys.platform.startswith("win"):
+                        possible_paths = [
+                            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+                            r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+                            r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+                            r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+                        ]
+                        for p in possible_paths:
+                            if os.path.exists(p):
+                                co.set_browser_path(p)
+                                break
+                                
                     # 添加无沙盒参数，防止在 root 或 docker 环境下崩溃
                     co.set_argument('--no-sandbox')
                     co.set_argument('--disable-gpu')
+                    co.set_argument('--disable-dev-shm-usage')
+                    
                     self.page = ChromiumPage(co)
+                    
+                    # 为了应对某些弱网或慢速系统环境，给页面设定超时并捕获
+                    self.page.set.timeouts(page_load=30, script=25)
                     # 访问目标域以满足 ReCAPTCHA 的域名白名单
                     self.page.get("https://chataibot.pro/app/auth/sign-up?variant=new")
                 except Exception as e:
@@ -82,26 +99,39 @@ class TokenHarvester:
                     return ""
 
             print("[*] 正在通过本地真实 V8 引擎进行硬件级指纹计算 (绕过 ReCAPTCHA v3)...")
+            # 添加隐式等待，防止页面DOM还没渲染完就去执行JS
+            self.page.wait(2)
+            
             js_inject = f"""
             return new Promise((resolve, reject) => {{
+                // 给 JS 设置一个内部看门狗定时器，防止死锁
+                const watchdog = setTimeout(() => {{ reject("JS Watchdog Timeout"); }}, 20000);
+                
                 if (window.grecaptcha && window.grecaptcha.execute) {{
-                    window.grecaptcha.execute('{site_key}', {{action: 'submit'}}).then(resolve).catch(reject);
+                    window.grecaptcha.execute('{site_key}', {{action: 'submit'}})
+                        .then(res => {{ clearTimeout(watchdog); resolve(res); }})
+                        .catch(err => {{ clearTimeout(watchdog); reject(err); }});
                 }} else {{
                     let script = document.createElement('script');
                     script.src = 'https://www.google.com/recaptcha/api.js?render={site_key}';
                     script.onload = () => {{
                         window.grecaptcha.ready(() => {{
-                            window.grecaptcha.execute('{site_key}', {{action: 'submit'}}).then(resolve).catch(reject);
+                            window.grecaptcha.execute('{site_key}', {{action: 'submit'}})
+                                .then(res => {{ clearTimeout(watchdog); resolve(res); }})
+                                .catch(err => {{ clearTimeout(watchdog); reject(err); }});
                         }});
                     }};
-                    script.onerror = reject;
+                    script.onerror = (err) => {{
+                        clearTimeout(watchdog);
+                        reject("Script load error");
+                    }};
                     document.head.appendChild(script);
                 }}
             }});
             """
             try:
-                # 运行注入脚本，超时设为 15 秒
-                token = self.page.run_js(js_inject, timeout=15)
+                # 运行注入脚本，将超时时间放宽到 25 秒
+                token = self.page.run_js(js_inject, timeout=25)
                 if token:
                     print(f"[+] 幽灵 V8 计算成功！获取真实高分 Token: {token[:30]}...")
                     return token
