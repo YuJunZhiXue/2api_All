@@ -957,13 +957,36 @@ class APIClient:
 
     # --- 额度/设置 ---
 
-    def get_count(self, jwt_token: str) -> int:
-        try:
-            resp = self.http_client.get(f"{CHATAIBOT_API_BASE}/user/answers-count/v2", headers=self._headers(jwt_token))
-            resp.raise_for_status()
-            return resp.json().get("leftAnswersCount", 0)
-        except Exception:
-            return -1  # -1 表示网络错误，区别于真实额度为0
+    def get_count(self, jwt_token: str, max_retries: int = 2) -> int:
+        """
+        查询账号剩余积分。
+        为了减少网络抖动导致的大面积失败，增加短时间的超时和重试机制。
+        """
+        for attempt in range(max_retries):
+            try:
+                h = self._headers(jwt_token)
+                h["x-authorization"] = f"Bearer {jwt_token}"
+                h["Accept-Language"] = "en-US,en;q=0.9"
+                resp = self.http_client.get(
+                    f"{CHATAIBOT_API_BASE}/user", 
+                    headers=h,
+                    timeout=15
+                )
+                if resp.status_code == 200:
+                    d = resp.json()
+                    # 取剩余消息条数或总额度，这里做个防护
+                    return d.get("availableTokens", 0)
+                elif resp.status_code in (401, 403):
+                    print(f"    ! 账号无效或被风控 (HTTP {resp.status_code})")
+                    return 0
+                else:
+                    import time
+                    time.sleep(1)
+            except Exception as e:
+                # print(f"[DEBUG] get_count 报错: {e}")
+                import time
+                time.sleep(1)
+        return -1  # -1 表示网络错误，区别于真实额度为0
 
     def update_user_settings(self, jwt_token: str, aspect_ratio: str) -> bool:
         try:
@@ -1296,8 +1319,38 @@ def create_account() -> Tuple[bool, str]:
         return False, ""
 
     jwt = cur_api_client.verify_account(email_addr, code)
+    
     if not jwt:
+        # 获取真正的 JWT Token (如果注册没有返回，通过登录获取)
+        # 这个网站的鉴权不仅有 Cookie，还有 Header 的 x-authorization
+        try:
+            print(f"[*] 尝试通过登录获取 JWT Token...")
+            login_payload = {
+                "email": email_addr,
+                "password": password
+            }
+            import json
+            json_str = json.dumps(login_payload, separators=(',', ':'))
+            headers = cur_api_client._headers()
+            headers["Accept-Language"] = "en-US,en;q=0.9"
+            
+            login_resp = cur_api_client.http_client.post(
+                f"{CHATAIBOT_API_BASE}/login",
+                data=json_str,
+                headers=headers
+            )
+            if login_resp.status_code == 200 or login_resp.status_code == 201:
+                data = login_resp.json()
+                jwt = data.get("token", "")
+                if jwt:
+                    print("[+] 登录成功，获取到 JWT！")
+        except Exception as e:
+            pass
+            
+    if not jwt:
+        print("    ? 注册成功但获取 JWT Token 失败，账号可能无法查询额度")
         return False, ""
+        
     return True, jwt
 
 
@@ -1324,9 +1377,47 @@ def start_pool(pool_size: int, init_count: int = 20) -> SimplePool:
                 elif q == -1:
                     # 网络错误，保留账号
                     valid.append(acc)
-                    print(f"  ? 查询余额失败（网络），保留账号 quota={acc.quota}", flush=True)
+                    print(f"  ? 查询异常网络错误，保留账号 quota={acc.quota}", flush=True)
+                elif q == 0:
+                    # Token 可能无效或真实额度耗尽，尝试重新登录获取 Token
+                    print(f"  ! Token 无效或过期，尝试重新登录: {getattr(acc, 'email', '未知')}", flush=True)
+                    try:
+                        login_payload = {
+                            "email": getattr(acc, 'email', ''),
+                            "password": getattr(acc, 'password', '')
+                        }
+                        import json
+                        json_str = json.dumps(login_payload, separators=(',', ':'))
+                        headers = api_client._headers()
+                        headers["Accept-Language"] = "en-US,en;q=0.9"
+                        
+                        login_resp = api_client.http_client.post(
+                            f"{CHATAIBOT_API_BASE}/login",
+                            data=json_str,
+                            headers=headers
+                        )
+                        if login_resp.status_code == 200 or login_resp.status_code == 201:
+                            data = login_resp.json()
+                            new_jwt = data.get("token", "")
+                            if new_jwt:
+                                acc.jwt = new_jwt
+                                # 再次查询
+                                new_q = api_client.get_count(new_jwt)
+                                if new_q > 0:
+                                    acc.quota = new_q
+                                    valid.append(acc)
+                                    print(f"  ✓ 重新登录成功，余额: {new_q}", flush=True)
+                                else:
+                                    print(f"  ✗ 重新登录后额度依然耗尽，移除", flush=True)
+                            else:
+                                print(f"  ✗ 重新登录未返回 Token，移除", flush=True)
+                        else:
+                            print(f"  ✗ 重新登录失败 (HTTP {login_resp.status_code})，移除", flush=True)
+                    except Exception as e:
+                        valid.append(acc)
+                        print(f"  ? 重新登录网络异常，保留账号 quota={acc.quota}", flush=True)
                 else:
-                    print(f"  ✗ 已失效，移除", flush=True)
+                    print(f"  ✗ 额度耗尽或已失效，移除", flush=True)
             loaded_accounts = valid
             account_store.save(valid)
             print(f"[*] 有效账号: {len(valid)} 个", flush=True)
