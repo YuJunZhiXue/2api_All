@@ -31,48 +31,78 @@ from waitress import serve
 import asyncio
 
 # ==========================================
-# 免费自研算力 (Pure HTTP ReCAPTCHA v3 Solver)
+# 免费自研算力 (DrissionPage 本地幽灵浏览器 V8 引擎)
 # ==========================================
-def get_free_recaptcha_token(session, site_key: str) -> str:
+class TokenHarvester:
+    def __init__(self):
+        self.page = None
+        self._lock = threading.Lock()
+
+    def get_token(self, site_key: str) -> str:
+        with self._lock:
+            try:
+                from DrissionPage import ChromiumPage, ChromiumOptions
+            except ImportError:
+                print("[-] 缺少 DrissionPage，请先执行: pip install DrissionPage")
+                return ""
+
+            if not self.page:
+                try:
+                    print("[*] 小代码酱正在唤醒本地幽灵 V8 引擎 (DrissionPage)...")
+                    co = ChromiumOptions()
+                    co.headless()  # 无头幽灵模式，完全不可见
+                    co.auto_port() # 避免端口冲突
+                    co.set_argument('--incognito') # 隐身模式，干净环境
+                    self.page = ChromiumPage(co)
+                    # 访问目标域以满足 ReCAPTCHA 的域名白名单
+                    self.page.get("https://chataibot.pro/app/auth/sign-up?variant=new")
+                except Exception as e:
+                    print(f"[-] 幽灵引擎唤醒失败 (请确保本地已安装 Chrome/Edge): {e}")
+                    return ""
+
+            print("[*] 正在通过本地真实 V8 引擎进行硬件级指纹计算 (绕过 ReCAPTCHA v3)...")
+            js_inject = f"""
+            return new Promise((resolve, reject) => {{
+                if (window.grecaptcha && window.grecaptcha.execute) {{
+                    window.grecaptcha.execute('{site_key}', {{action: 'submit'}}).then(resolve).catch(reject);
+                }} else {{
+                    let script = document.createElement('script');
+                    script.src = 'https://www.google.com/recaptcha/api.js?render={site_key}';
+                    script.onload = () => {{
+                        window.grecaptcha.ready(() => {{
+                            window.grecaptcha.execute('{site_key}', {{action: 'submit'}}).then(resolve).catch(reject);
+                        }});
+                    }};
+                    script.onerror = reject;
+                    document.head.appendChild(script);
+                }}
+            }});
+            """
+            try:
+                # 运行注入脚本，超时设为 15 秒
+                token = self.page.run_js(js_inject, timeout=15)
+                if token:
+                    print(f"[+] 幽灵 V8 计算成功！获取真实高分 Token: {token[:30]}...")
+                    return token
+                else:
+                    print("[-] Token 计算返回为空")
+                    return ""
+            except Exception as e:
+                print(f"[-] 幽灵引擎执行异常，正在重置: {e}")
+                try:
+                    self.page.quit()
+                except:
+                    pass
+                self.page = None
+                return ""
+
+harvester = TokenHarvester()
+
+def get_free_recaptcha_token(site_key: str) -> str:
     """
-    使用与主发包相同的 curl_cffi Session 向 Google 直接骗取 Token，
-    确保 JA3 与 HTTP/2 指纹在整个流中绝对连贯一致。
+    通过 DrissionPage 调用本地真实浏览器获取高分 Token，解决 400 报错。
     """
-    print(f"[*] 小代码酱正在深潜 Google 验证网络，伪造底层心跳...")
-    try:
-        url = f"https://www.google.com/recaptcha/api2/anchor?ar=1&k={site_key}&co=aHR0cHM6Ly9jaGF0YWlib3QucHJvOjQ0Mw..&hl=en&v=gTpTIWhbKpxADzTzkcabhXN4&size=invisible&cb=12345"
-        
-        # 1. 模拟加载 Anchor 获取初始交互 Token
-        res = session.get(url, timeout=10)
-        match = re.search(r'id="recaptcha-token" value="(.*?)"', res.text)
-        if not match:
-            print("[-] Anchor 欺骗失败，IP 可能被风控拦截。")
-            return ""
-        initial_token = match.group(1)
-        
-        # 2. 模拟前端 Reload，提取最终签发的 rresp Token
-        reload_url = f"https://www.google.com/recaptcha/api2/reload?k={site_key}"
-        payload = f"v=gTpTIWhbKpxADzTzkcabhXN4&reason=q&c={initial_token}&k={site_key}&co=aHR0cHM6Ly9jaGF0YWlib3QucHJvOjQ0Mw.."
-        
-        headers = {
-            "Content-Type": "application/x-www-form-urlencoded",
-            "Origin": "https://www.google.com",
-            "Referer": url
-        }
-        
-        res2 = session.post(reload_url, data=payload, headers=headers, timeout=10)
-        match2 = re.search(r'"rresp","(.*?)"', res2.text)
-        if not match2:
-            print("[-] Reload 欺骗失败，无法提取最终 Token。")
-            return ""
-            
-        final_token = match2.group(1)
-        print(f"[+] 成功骗取底层验证 Token: {final_token[:30]}...")
-        return final_token
-        
-    except Exception as e:
-        print(f"[-] 验证网络深潜崩溃: {e}")
-        return ""
+    return harvester.get_token(site_key)
 
 # curl_cffi 用于 mail.chatgpt.org.uk 邮箱（模仿 xxx3.py）
 try:
@@ -760,8 +790,8 @@ class APIClient:
 
         print(f"[*] 小代码酱正在为你准备最干净的底层握手协议...")
 
-        # 核心突破：让 curl_cffi Session 带着当前 IP 去骗 Token
-        token = get_free_recaptcha_token(self.http_client, "6LcPG50sAAAAANMPmPW3KjEgJQw-crAIzO6nr30r")
+        # 核心突破：通过本地幽灵浏览器获取真实高分 Token
+        token = get_free_recaptcha_token("6LcPG50sAAAAANMPmPW3KjEgJQw-crAIzO6nr30r")
         if not token:
             print("[-] 无法获取连贯的底层 Token，跳过当前账号")
             return False, ""
