@@ -56,6 +56,24 @@ class TokenHarvester:
                     # 关键突破：强制对齐 User-Agent，否则 ReCAPTCHA 会因为生成和使用的 UA 不匹配直接封杀 Token！
                     ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36"
                     co.set_user_agent(ua)
+                    
+                    # 适配 Linux/Mac 环境，如果本地找不到浏览器，则需要手动指定
+                    import sys
+                    import os
+                    if sys.platform.startswith("linux"):
+                        possible_paths = [
+                            "/usr/bin/google-chrome",
+                            "/usr/bin/chromium-browser",
+                            "/usr/bin/chromium",
+                            "/opt/google/chrome/google-chrome"
+                        ]
+                        for p in possible_paths:
+                            if os.path.exists(p):
+                                co.set_browser_path(p)
+                                break
+                    # 添加无沙盒参数，防止在 root 或 docker 环境下崩溃
+                    co.set_argument('--no-sandbox')
+                    co.set_argument('--disable-gpu')
                     self.page = ChromiumPage(co)
                     # 访问目标域以满足 ReCAPTCHA 的域名白名单
                     self.page.get("https://chataibot.pro/app/auth/sign-up?variant=new")
@@ -1578,6 +1596,50 @@ def create_app(account_pool: SimplePool) -> Flask:
         err = verify_api_key()
         if err:
             return err
+            
+        try:
+            # 实时抓取网页真实模型列表
+            url = f"{CHATAIBOT_API_BASE}/models"
+            headers = {
+                "Accept": "application/json, text/plain, */*",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Origin": "https://chataibot.pro",
+                "Referer": "https://chataibot.pro/",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36"
+            }
+            s = requests.Session()
+            s.timeout = 10
+            if reg_proxy_pool:
+                raw = reg_proxy_pool.next_one_raw()
+                if raw:
+                    addr, kind = raw
+                    proxy_url = f"socks5://{addr}" if kind == "socks5" else f"http://{addr}"
+                    s.proxies.update({"http": proxy_url, "https": proxy_url})
+            elif global_proxy_url:
+                s.proxies.update({"http": global_proxy_url, "https": global_proxy_url})
+                
+            resp = s.get(url, headers=headers)
+            if resp.status_code == 200:
+                data = resp.json()
+                models = []
+                # 解析网页真实模型组
+                groups = data.get("modelsGroup", {})
+                for group_name, group_data in groups.items():
+                    for item in group_data.get("models", []):
+                        mid = item.get("model")
+                        if mid:
+                            models.append({"id": mid, "object": "model", "created": 1700000000, "owned_by": f"chataibot-{group_name.lower()}"})
+                
+                # 补充图片模型（由于网页可能拆分接口，为了稳妥，同时保留内置的图片模型）
+                for mid in IMAGE_MODEL_ROUTER:
+                    if not any(m["id"] == mid for m in models):
+                        models.append({"id": mid, "object": "model", "created": 1700000000, "owned_by": "chataibot-image"})
+                        
+                return jsonify({"object": "list", "data": models}), 200
+        except Exception as e:
+            print(f"[-] 抓取真实模型列表失败: {e}，回退到内置列表")
+
+        # 失败时回退到内置的硬编码列表
         models = []
         for mid in IMAGE_MODEL_ROUTER:
             models.append({"id": mid, "object": "model", "created": 1700000000, "owned_by": "chataibot-image"})
