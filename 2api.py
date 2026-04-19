@@ -803,13 +803,13 @@ class APIClient:
         payload = {
             "email": email,
             "password": password,
+            "captchaToken": token,
             "isAdvertisingAccepted": False,
             "mainSiteUrl": "https://chataibot.pro/app/auth/sign-up?variant=new",
             "utmSource": "",
             "utmCampaign": "",
             "connectBusiness": "",
-            "yandexClientId": yandex_id,
-            "captchaToken": token
+            "yandexClientId": yandex_id
         }
 
         # 统一通过 _headers 获取完整的、高度伪装的请求头
@@ -824,14 +824,15 @@ class APIClient:
         else:
             print(f"[*] 注册: {email}")
 
-        print(f"[DEBUG] --------------------")
-        print(f"[DEBUG] 正在发往: {CHATAIBOT_API_BASE}/register")
-        print(f"[DEBUG] 完整请求头 (Headers):")
-        for k, v in fake_headers.items():
-            print(f"[DEBUG]   {k}: {v}")
-        print(f"[DEBUG] 完整请求体 (Payload):")
-        print(f"[DEBUG]   {payload}")
-        print(f"[DEBUG] --------------------")
+        # [DEBUG] 打印被隐藏，保持控制台整洁
+        # print(f"[DEBUG] --------------------")
+        # print(f"[DEBUG] 正在发往: {CHATAIBOT_API_BASE}/register")
+        # print(f"[DEBUG] 完整请求头 (Headers):")
+        # for k, v in fake_headers.items():
+        #     print(f"[DEBUG]   {k}: {v}")
+        # print(f"[DEBUG] 完整请求体 (Payload):")
+        # print(f"[DEBUG]   {payload}")
+        # print(f"[DEBUG] --------------------")
 
         try:
             # 关键：使用 curl_cffi 发送请求，并且不传递 json=payload，以防止 requests 内部强制覆盖 Content-Type 和编码行为
@@ -845,15 +846,14 @@ class APIClient:
                 headers=fake_headers
             )
 
-            print(f"[DEBUG] 响应状态码: {resp.status_code}")
-            print(f"[DEBUG] 响应头: {dict(resp.headers)}")
-            print(f"[DEBUG] 响应体: {resp.text}")
+            # print(f"[DEBUG] 响应状态码: {resp.status_code}")
+            # print(f"[DEBUG] 响应头: {dict(resp.headers)}")
+            # print(f"[DEBUG] 响应体: {resp.text}")
 
             if resp.status_code == 200 or resp.status_code == 201:
                 return True, password
             else:
-                print(f"[-] 注册请求失败: HTTPError: HTTP Error {resp.status_code}: Bad Request")
-                print(f"[DEBUG] 拦截体: {resp.text}")
+                print(f"[-] 注册请求失败: HTTP {resp.status_code}: {resp.text}")
                 return False, ""
         except Exception as e:
             print(f"[-] 注册请求失败: {e}")
