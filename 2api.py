@@ -53,6 +53,9 @@ class TokenHarvester:
                     co.headless()  # 无头幽灵模式，完全不可见
                     co.auto_port() # 避免端口冲突
                     co.set_argument('--incognito') # 隐身模式，干净环境
+                    # 关键突破：强制对齐 User-Agent，否则 ReCAPTCHA 会因为生成和使用的 UA 不匹配直接封杀 Token！
+                    ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36"
+                    co.set_user_agent(ua)
                     self.page = ChromiumPage(co)
                     # 访问目标域以满足 ReCAPTCHA 的域名白名单
                     self.page.get("https://chataibot.pro/app/auth/sign-up?variant=new")
@@ -811,8 +814,8 @@ class APIClient:
 
         # 统一通过 _headers 获取完整的、高度伪装的请求头
         fake_headers = self._headers()
-        # 关键修正：迎合俄罗斯后端，防止返回 {"message":""} 吞噬报错
-        fake_headers["Accept-Language"] = "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7"
+        # 关键修正：迎合俄罗斯后端，使用严格的 en 强制加载原版报错，防止出现 {"message":""} 吞噬报错
+        fake_headers["Accept-Language"] = "en"
         self.http_client.headers.update(fake_headers)
 
         current_ip = self._get_current_ip()
