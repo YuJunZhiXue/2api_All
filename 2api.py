@@ -1109,10 +1109,24 @@ class APIClient:
 # 数据结构
 # ==========================================
 
-@dataclass
 class Account:
-    jwt: str
-    quota: int
+    def __init__(self, email: str = "", password: str = "", jwt: str = "", access_token: str = "", refresh_token: str = "", quota: int = 65):
+        self.email = email
+        self.password = password
+        self.jwt = jwt
+        self.access_token = access_token or jwt # 向下兼容
+        self.refresh_token = refresh_token
+        self.quota = quota
+
+    def to_dict(self) -> dict:
+        return {
+            "email": self.email,
+            "password": self.password,
+            "jwt": self.jwt, # 兼容老代码
+            "access_token": self.access_token,
+            "refresh_token": self.refresh_token,
+            "quota": self.quota
+        }
 
 
 class AccountStore:
@@ -1137,7 +1151,14 @@ class AccountStore:
                 jwt = item.get("jwt", "")
                 quota = item.get("quota", 0)
                 if jwt:
-                    accounts.append(Account(jwt=jwt, quota=quota))
+                    accounts.append(Account(
+                        email=item.get("email", ""),
+                        password=item.get("password", ""),
+                        jwt=jwt,
+                        access_token=item.get("access_token", jwt),
+                        refresh_token=item.get("refresh_token", ""),
+                        quota=quota
+                    ))
             print(f"[*] 从 {self.file_path} 加载了 {len(accounts)} 个账号", flush=True)
             return accounts
         except FileNotFoundError:
@@ -1151,7 +1172,7 @@ class AccountStore:
         with self.lock:
             data = []
             for acc in accounts:
-                data.append({"jwt": acc.jwt, "quota": acc.quota})
+                data.append(acc.to_dict())
             try:
                 with open(self.file_path, "w", encoding="utf-8") as f:
                     json.dump(data, f, indent=2, ensure_ascii=False)
@@ -1159,7 +1180,7 @@ class AccountStore:
                 print(f"[-] 保存账号文件失败: {e}", flush=True)
 
     def append(self, acc: Account):
-        """追加一个账号到文件（不覆盖已有的）"""
+        """追加一个账号到文件（不覆盖已有的）。"""
         with self.lock:
             data = []
             try:
@@ -1167,7 +1188,7 @@ class AccountStore:
                     data = json.load(f)
             except (FileNotFoundError, json.JSONDecodeError):
                 data = []
-            data.append({"jwt": acc.jwt, "quota": acc.quota})
+            data.append(acc.to_dict())
             try:
                 with open(self.file_path, "w", encoding="utf-8") as f:
                     json.dump(data, f, indent=2, ensure_ascii=False)
@@ -1340,15 +1361,27 @@ def create_account() -> Tuple[bool, str]:
                 headers=headers
             )
             if login_resp.status_code == 200 or login_resp.status_code == 201:
-                data = login_resp.json()
-                jwt = data.get("token", "")
-                if jwt:
+                new_jwt = ""
+                try:
+                    data = login_resp.json()
+                    new_jwt = data.get("token", "")
+                except Exception:
+                    pass
+                    
+                if not new_jwt:
+                    cookies = login_resp.cookies
+                    if "token" in cookies:
+                        new_jwt = cookies.get("token")
+                        
+                if new_jwt:
+                    jwt = new_jwt
                     print("[+] 登录成功，获取到 JWT！")
         except Exception as e:
             pass
             
     if not jwt:
         print("    ? 注册成功但获取 JWT Token 失败，账号可能无法查询额度")
+        # 无法获取有效 Token 时直接丢弃
         return False, ""
         
     return True, jwt
@@ -1380,7 +1413,8 @@ def start_pool(pool_size: int, init_count: int = 20) -> SimplePool:
                     print(f"  ? 查询异常网络错误，保留账号 quota={acc.quota}", flush=True)
                 elif q == 0:
                     # Token 可能无效或真实额度耗尽，尝试重新登录获取 Token
-                    print(f"  ! Token 无效或过期，尝试重新登录: {getattr(acc, 'email', '未知')}", flush=True)
+                    email_str = acc.email if hasattr(acc, "email") else "未知"
+                    print(f"  ! Token 无效或过期，尝试重新登录: {email_str}", flush=True)
                     try:
                         login_payload = {
                             "email": getattr(acc, 'email', ''),
@@ -1410,10 +1444,11 @@ def start_pool(pool_size: int, init_count: int = 20) -> SimplePool:
                                 # Try extracting from Set-Cookie header
                                 cookies = login_resp.cookies
                                 if "token" in cookies:
-                                    new_jwt = cookies["token"]
+                                    new_jwt = cookies.get("token")
                                     
                             if new_jwt:
-                                acc.token = new_jwt
+                                acc.jwt = new_jwt
+                                acc.access_token = new_jwt
                                 # 再次查询
                                 new_q = api_client.get_count(new_jwt)
                                 if new_q > 0:
