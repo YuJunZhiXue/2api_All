@@ -99,39 +99,55 @@ class TokenHarvester:
                     return ""
 
             print("[*] 正在通过本地真实 V8 引擎进行硬件级指纹计算 (绕过 ReCAPTCHA v3)...")
-            # 添加隐式等待，防止页面DOM还没渲染完就去执行JS
+            
+            # 为了确保 Google 的网络脚本有足够的时间下载，我们主动使用隐式等待
+            self.page.wait.load_start()
             self.page.wait(2)
             
+            # 改进后的注入脚本，专门应对弱网加载慢或者多次加载失败的情况
             js_inject = f"""
             return new Promise((resolve, reject) => {{
-                // 给 JS 设置一个内部看门狗定时器，防止死锁
-                const watchdog = setTimeout(() => {{ reject("JS Watchdog Timeout"); }}, 20000);
+                // 放宽看门狗到 25 秒
+                const watchdog = setTimeout(() => {{ reject("JS Watchdog Timeout"); }}, 25000);
                 
+                function doExecute() {{
+                    try {{
+                        window.grecaptcha.execute('{site_key}', {{action: 'submit'}})
+                            .then(res => {{ clearTimeout(watchdog); resolve(res); }})
+                            .catch(err => {{ clearTimeout(watchdog); reject("Execute Error: " + err); }});
+                    }} catch (e) {{
+                        clearTimeout(watchdog);
+                        reject("Try-Catch Error: " + e);
+                    }}
+                }}
+
                 if (window.grecaptcha && window.grecaptcha.execute) {{
-                    window.grecaptcha.execute('{site_key}', {{action: 'submit'}})
-                        .then(res => {{ clearTimeout(watchdog); resolve(res); }})
-                        .catch(err => {{ clearTimeout(watchdog); reject(err); }});
+                    doExecute();
                 }} else {{
                     let script = document.createElement('script');
-                    script.src = 'https://www.google.com/recaptcha/api.js?render={site_key}';
+                    // 添加额外的参数强制绕过缓存，应对某些奇怪的被墙缓存
+                    script.src = 'https://www.google.com/recaptcha/api.js?render={site_key}&t=' + Date.now();
                     script.onload = () => {{
-                        window.grecaptcha.ready(() => {{
-                            window.grecaptcha.execute('{site_key}', {{action: 'submit'}})
-                                .then(res => {{ clearTimeout(watchdog); resolve(res); }})
-                                .catch(err => {{ clearTimeout(watchdog); reject(err); }});
-                        }});
+                        if (window.grecaptcha) {{
+                            window.grecaptcha.ready(() => {{
+                                doExecute();
+                            }});
+                        }} else {{
+                            clearTimeout(watchdog);
+                            reject("grecaptcha object not found after onload");
+                        }}
                     }};
                     script.onerror = (err) => {{
                         clearTimeout(watchdog);
-                        reject("Script load error");
+                        reject("Script load error. 可能被墙或代理不通。");
                     }};
                     document.head.appendChild(script);
                 }}
             }});
             """
             try:
-                # 运行注入脚本，将超时时间放宽到 25 秒
-                token = self.page.run_js(js_inject, timeout=25)
+                # 运行注入脚本，将 Python 层面的超时时间放宽到 30 秒
+                token = self.page.run_js(js_inject, timeout=30)
                 if token:
                     print(f"[+] 幽灵 V8 计算成功！获取真实高分 Token: {token[:30]}...")
                     return token
@@ -840,6 +856,22 @@ class APIClient:
         password = email  # LO指令：密码使用邮箱
 
         print(f"[*] 小代码酱正在为你准备最干净的底层握手协议...")
+
+        # 将 DrissionPage 的代理池挂载与 curl_cffi 同步，防止本地直接裸连 Google 导致 JS 被墙！
+        proxy_server = None
+        if reg_proxy_pool:
+            raw = reg_proxy_pool.next_one_raw()
+            if raw:
+                addr, kind = raw
+                proxy_server = f"socks5://{addr}" if kind == "socks5" else f"http://{addr}"
+        elif global_proxy_url:
+            proxy_server = global_proxy_url
+            
+        if proxy_server:
+            # 通过环境变量传递给 DrissionPage 内部，确保它能在生成 Token 时穿透防火墙
+            import os
+            os.environ['http_proxy'] = proxy_server
+            os.environ['https_proxy'] = proxy_server
 
         # 核心突破：通过本地幽灵浏览器获取真实高分 Token
         token = get_free_recaptcha_token("6LcPG50sAAAAANMPmPW3KjEgJQw-crAIzO6nr30r")
