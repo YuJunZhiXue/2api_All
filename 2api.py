@@ -808,15 +808,20 @@ class APIClient:
 
     def __init__(self, proxies: Optional[Dict[str, str]] = None):
         # 优先用 curl_cffi 伪装浏览器，绕过反爬虫
+        self.proxies = proxies
         if HAS_CFFI:
-            self.http_client = cffi_requests.Session(proxies=proxies, impersonate="chrome")
             print("[*] 使用 curl_cffi 模拟浏览器（Chrome）", flush=True)
         else:
-            self.http_client = requests.Session()
-            if proxies:
-                self.http_client.proxies.update(proxies)
             print("[!] curl_cffi 未安装，降级使用 requests（可能被反爬虫拒绝）", flush=True)
-        self.proxies = proxies
+
+    def _request(self, method: str, url: str, **kwargs):
+        if self.proxies:
+            kwargs["proxies"] = self.proxies
+        if HAS_CFFI:
+            kwargs["impersonate"] = "chrome"
+            return cffi_requests.request(method, url, **kwargs)
+        else:
+            return requests.request(method, url, **kwargs)
 
     def _headers(self, jwt_token: str = "") -> Dict[str, str]:
         h = {
@@ -842,7 +847,7 @@ class APIClient:
     def _get_current_ip(self) -> str:
         """获取当前出口 IP（用于日志显示代理地址）"""
         try:
-            resp = self.http_client.get("https://api.ipify.org?format=json", timeout=5)
+            resp = self._request("GET", "https://api.ipify.org?format=json", timeout=5)
             if resp.status_code == 200:
                 return resp.json().get("ip", "")
         except Exception:
@@ -895,8 +900,7 @@ class APIClient:
         # 统一通过 _headers 获取完整的、高度伪装的请求头
         fake_headers = self._headers()
         # 关键修正：迎合俄罗斯后端，使用严格的 en 强制加载原版报错，防止出现 {"message":""} 吞噬报错
-        fake_headers["Accept-Language"] = "en"
-        self.http_client.headers.update(fake_headers)
+        fake_headers["Accept-Language"] = "en" 
 
         current_ip = self._get_current_ip()
         if current_ip:
@@ -920,7 +924,7 @@ class APIClient:
             import json
             json_str = json.dumps(payload, separators=(',', ':'))
 
-            resp = self.http_client.post(
+            resp = self._request("POST",
                 f"{CHATAIBOT_API_BASE}/register", 
                 data=json_str, 
                 headers=fake_headers
@@ -943,7 +947,7 @@ class APIClient:
         payload = {"email": email, "token": code, "connectBusiness": ""}
         try:
             print(f"[*] 提交验证码 [{code}]...")
-            resp = self.http_client.post(f"{CHATAIBOT_API_BASE}/register/verify", json=payload, headers=self._headers())
+            resp = self._request("POST", f"{CHATAIBOT_API_BASE}/register/verify", json=payload, headers=self._headers())
             resp.raise_for_status()
             jwt = resp.json().get("jwtToken", "")
             if jwt:
@@ -967,15 +971,19 @@ class APIClient:
                 h = self._headers(jwt_token)
                 h["x-authorization"] = f"Bearer {jwt_token}"
                 h["Accept-Language"] = "en-US,en;q=0.9"
-                resp = self.http_client.get(
+                resp = self._request("GET",
                     f"{CHATAIBOT_API_BASE}/user", 
                     headers=h,
                     timeout=15
                 )
                 if resp.status_code == 200:
                     d = resp.json()
-                    # 取剩余消息条数或总额度，这里做个防护
-                    return d.get("availableTokens", 0)
+                    if "availableTokens" in d:
+                        return d["availableTokens"]
+                    
+                    limit = d.get("freeRequestsLimit", 0)
+                    used = d.get("questionsCount", 0)
+                    return max(0, limit - used)
                 elif resp.status_code in (401, 403):
                     print(f"    ! 账号无效或被风控 (HTTP {resp.status_code})")
                     return 0
@@ -990,7 +998,7 @@ class APIClient:
 
     def update_user_settings(self, jwt_token: str, aspect_ratio: str) -> bool:
         try:
-            resp = self.http_client.post(
+            resp = self._request("POST",
                 f"{CHATAIBOT_API_BASE}/user/update",
                 json={"settings": {"imageAspectRatio": aspect_ratio}},
                 headers=self._headers(jwt_token),
@@ -1003,7 +1011,7 @@ class APIClient:
 
     def get_referrer_link(self, jwt_token: str) -> Tuple[str, str]:
         try:
-            resp = self.http_client.get(
+            resp = self._request("GET",
                 f"{CHATAIBOT_API_BASE}/user/referrer",
                 params={"isInternational": "true"},
                 headers=self._headers(jwt_token),
@@ -1032,11 +1040,7 @@ class APIClient:
         if images:
             payload["images"] = images
         try:
-            s = requests.Session()
-            s.timeout = 5 * 60
-            if self.proxies:
-                s.proxies.update(self.proxies)
-            resp = s.post(f"{CHATAIBOT_API_BASE}/image/generate", json=payload, headers=self._headers(jwt_token))
+            resp = self._request("POST", f"{CHATAIBOT_API_BASE}/image/generate", json=payload, headers=self._headers(jwt_token), timeout=5*60)
             resp.raise_for_status()
             data = resp.json()
             if isinstance(data, list) and len(data) > 0:
@@ -1053,7 +1057,7 @@ class APIClient:
         """创建聊天上下文，返回 chatId"""
         payload = {"title": title, "chatModel": chat_model, "from": 1}
         try:
-            resp = self.http_client.post(
+            resp = self._request("POST",
                 f"{CHATAIBOT_API_BASE}/message/context",
                 json=payload,
                 headers=self._headers(jwt_token),
@@ -1077,11 +1081,7 @@ class APIClient:
             "chatId": chat_id,
         }
         try:
-            s = requests.Session()
-            s.timeout = 120
-            if self.proxies:
-                s.proxies.update(self.proxies)
-            resp = s.post(f"{CHATAIBOT_API_BASE}/message", json=payload, headers=self._headers(jwt_token))
+            resp = self._request("POST", f"{CHATAIBOT_API_BASE}/message", json=payload, headers=self._headers(jwt_token), timeout=120)
             if resp.status_code == 200:
                 data = resp.json()
                 return data.get("answer", "")
@@ -1098,11 +1098,7 @@ class APIClient:
         """透明代理请求到 ChatAiBot API"""
         url = f"{CHATAIBOT_API_BASE}/{path.lstrip('/')}"
         h = self._headers(jwt_token)
-        s = requests.Session()
-        s.timeout = 120
-        if self.proxies:
-            s.proxies.update(self.proxies)
-        return s.request(method, url, json=body, params=params, headers=h)
+        return self._request(method, url, json=body, params=params, headers=h, timeout=120)
 
 
 # ==========================================
@@ -1366,7 +1362,7 @@ def create_account() -> Tuple[bool, str, str, str]:
             headers = cur_api_client._headers()
             headers["Accept-Language"] = "en-US,en;q=0.9"
             
-            login_resp = cur_api_client.http_client.post(
+            login_resp = cur_api_client._request("POST", 
                 f"{CHATAIBOT_API_BASE}/login",
                 data=json_str,
                 headers=headers
@@ -1415,7 +1411,7 @@ def do_relogin(acc: Account) -> Tuple[bool, str]:
         headers = api_client._headers()
         headers["Accept-Language"] = "en-US,en;q=0.9"
         
-        login_resp = api_client.http_client.post(
+        login_resp = api_client._request("POST", 
             f"{CHATAIBOT_API_BASE}/login",
             data=json_str,
             headers=headers
