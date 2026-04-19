@@ -1110,12 +1110,12 @@ class APIClient:
 # ==========================================
 
 class Account:
-    def __init__(self, email: str = "", password: str = "", jwt: str = "", access_token: str = "", refresh_token: str = "", quota: int = 65):
+    def __init__(self, email: str = "", password: str = "", jwt: str = "", access_token: str = "", refresh_token: str = "", quota: int = 65, acctoken: str = "", restoken: str = ""):
         self.email = email
         self.password = password
-        self.jwt = jwt
-        self.access_token = access_token or jwt # 向下兼容
-        self.refresh_token = refresh_token
+        self.jwt = jwt or access_token or acctoken
+        self.access_token = access_token or acctoken or self.jwt
+        self.refresh_token = refresh_token or restoken or self.jwt
         self.quota = quota
 
     def to_dict(self) -> dict:
@@ -1123,8 +1123,8 @@ class Account:
             "email": self.email,
             "password": self.password,
             "jwt": self.jwt, # 兼容老代码
-            "access_token": self.access_token,
-            "refresh_token": self.refresh_token,
+            "acctoken": self.access_token,
+            "restoken": self.refresh_token,
             "quota": self.quota
         }
 
@@ -1148,15 +1148,16 @@ class AccountStore:
                 data = json.load(f)
             accounts = []
             for item in data:
-                jwt = item.get("jwt", "")
+                acctoken = item.get("acctoken", item.get("access_token", item.get("jwt", "")))
+                restoken = item.get("restoken", item.get("refresh_token", ""))
                 quota = item.get("quota", 0)
-                if jwt:
+                if acctoken:
                     accounts.append(Account(
                         email=item.get("email", ""),
                         password=item.get("password", ""),
-                        jwt=jwt,
-                        access_token=item.get("access_token", jwt),
-                        refresh_token=item.get("refresh_token", ""),
+                        jwt=item.get("jwt", ""),
+                        acctoken=acctoken,
+                        restoken=restoken,
                         quota=quota
                     ))
             print(f"[*] 从 {self.file_path} 加载了 {len(accounts)} 个账号", flush=True)
@@ -1277,44 +1278,54 @@ class SimplePool:
                 self._waiting_count = max(0, self._waiting_count - 1)
 
     def release(self, acc: Account):
-        """释放账号：实时查余额，归还池中；耗尽则移除并触发补充注册"""
-        q = api_client.get_count(acc.jwt)
+        """释放账号：实时查余额，归还池中；耗尽则尝试重新登录"""
+        q = api_client.get_count(acc.access_token)
         if q == -1:
             # 网络错误，保留账号原有额度，直接归还
             print(f"[!] 查询余额网络错误，保留账号 (quota={acc.quota})", flush=True)
+        elif q == 0:
+            print(f"[*] 账号额度耗尽或失效，尝试重新登录...", flush=True)
+            success, new_jwt = do_relogin(acc)
+            if success:
+                acc.jwt = new_jwt
+                acc.access_token = new_jwt
+                acc.refresh_token = new_jwt
+                new_q = api_client.get_count(new_jwt)
+                acc.quota = new_q if new_q > 0 else 0
+            else:
+                acc.quota = 0
         else:
             acc.quota = q
-        if acc.quota < 2:
-            print(f"[*] 账号额度耗尽 ({acc.quota})，移除并触发补充", flush=True)
-            self._save_to_file()
-            self._signal_demand()
-            return
+
         with self.lock:
+            # 无论死活都放回池中，acquire 时会自动跳过 quota < cost 的账号
             self.used_pool.append(acc)
+            active_count = len([a for a in self.used_pool if a.quota >= 2])
+            
         self._save_to_file()
-        # 如果池低于最大值，也触发补充
-        with self.lock:
-            current = len(self.used_pool)
-        if current < self.max_size:
+        
+        # 如果活跃账号数低于最大值，触发补充注册
+        if active_count < self.max_size:
             self._signal_demand()
 
     def _save_to_file(self):
-        """保存池中额度>=2的账号到文件，自动剔除耗尽账号"""
+        """保存池中所有账号到文件，不剔除耗尽账号"""
         if account_store:
             with self.lock:
-                valid = [a for a in self.used_pool if a.quota >= 2]
+                valid = list(self.used_pool)
             account_store.save(valid)
 
     def pool_status(self) -> str:
         with self.lock:
             total = sum(a.quota for a in self.used_pool)
-            return f"池中: {len(self.used_pool)}/{self.max_size}, 余额: {total}"
+            active = len([a for a in self.used_pool if a.quota >= 2])
+            return f"活跃: {active}/{self.max_size} (总账号: {len(self.used_pool)}), 余额: {total}"
 
 # ==========================================
 # 账户创建
 # ==========================================
 
-def create_account() -> Tuple[bool, str]:
+def create_account() -> Tuple[bool, str, str, str]:
     # 每次注册使用独立代理（来自代理池），实现 IP 隔离
     reg_proxies = reg_proxy_pool.next() if reg_proxy_pool and len(reg_proxy_pool) > 0 else None
     proxy_url = reg_proxies['http'] if reg_proxies else (global_proxy_url or None)
@@ -1329,15 +1340,15 @@ def create_account() -> Tuple[bool, str]:
     # LO指令：废弃 Camoufox，全盘采用纯 Python 协议级伪装
     email_addr, _ = cur_email_session.get_email_and_token()
     if not email_addr:
-        return False, ""
+        return False, "", "", ""
 
     success, password = cur_api_client.send_register_request(email_addr)
     if not success:
-        return False, ""
+        return False, "", "", ""
 
     code = cur_email_session.get_verify_code(email_addr)
     if not code:
-        return False, ""
+        return False, "", "", ""
 
     jwt = cur_api_client.verify_account(email_addr, code)
     
@@ -1382,14 +1393,45 @@ def create_account() -> Tuple[bool, str]:
     if not jwt:
         print("    ? 注册成功但获取 JWT Token 失败，账号可能无法查询额度")
         # 无法获取有效 Token 时直接丢弃
-        return False, ""
+        return False, "", "", ""
         
-    return True, jwt
+    return True, jwt, email_addr, password
 
 
 # ==========================================
 # 账户池启动
 # ==========================================
+
+def do_relogin(acc: Account) -> Tuple[bool, str]:
+    if not acc.email or not acc.password:
+        return False, ""
+    try:
+        login_payload = {
+            "email": acc.email,
+            "password": acc.password
+        }
+        import json
+        json_str = json.dumps(login_payload, separators=(',', ':'))
+        headers = api_client._headers()
+        headers["Accept-Language"] = "en-US,en;q=0.9"
+        
+        login_resp = api_client.http_client.post(
+            f"{CHATAIBOT_API_BASE}/login",
+            data=json_str,
+            headers=headers
+        )
+        if login_resp.status_code in (200, 201):
+            new_jwt = ""
+            try:
+                new_jwt = login_resp.json().get("token", "")
+            except Exception:
+                pass
+            if not new_jwt:
+                new_jwt = login_resp.cookies.get("token", "")
+            return bool(new_jwt), new_jwt
+        return False, ""
+    except Exception:
+        return False, ""
 
 def start_pool(pool_size: int, init_count: int = 20) -> SimplePool:
     p = SimplePool(pool_size)
@@ -1400,83 +1442,53 @@ def start_pool(pool_size: int, init_count: int = 20) -> SimplePool:
         loaded_accounts = account_store.load()
         if loaded_accounts:
             print(f"[*] 正在验证已有 {len(loaded_accounts)} 个账号的余额...", flush=True)
-            valid = []
             for acc in loaded_accounts:
-                q = api_client.get_count(acc.jwt)
+                q = api_client.get_count(acc.access_token)
                 if q > 0:
                     acc.quota = q
-                    valid.append(acc)
                     print(f"  ✓ 余额: {q}", flush=True)
                 elif q == -1:
                     # 网络错误，保留账号
-                    valid.append(acc)
                     print(f"  ? 查询异常网络错误，保留账号 quota={acc.quota}", flush=True)
                 elif q == 0:
                     # Token 可能无效或真实额度耗尽，尝试重新登录获取 Token
-                    email_str = acc.email if hasattr(acc, "email") else "未知"
+                    email_str = acc.email if getattr(acc, "email", "") else "未知"
                     print(f"  ! Token 无效或过期，尝试重新登录: {email_str}", flush=True)
-                    try:
-                        login_payload = {
-                            "email": getattr(acc, 'email', ''),
-                            "password": getattr(acc, 'password', '')
-                        }
-                        import json
-                        json_str = json.dumps(login_payload, separators=(',', ':'))
-                        headers = api_client._headers()
-                        headers["Accept-Language"] = "en-US,en;q=0.9"
-                        
-                        login_resp = api_client.http_client.post(
-                            f"{CHATAIBOT_API_BASE}/login",
-                            data=json_str,
-                            headers=headers
-                        )
-                        if login_resp.status_code == 200 or login_resp.status_code == 201:
-                            # The backend sometimes returns the token in a JSON body or a Set-Cookie header.
-                            # Let's check both
-                            new_jwt = ""
-                            try:
-                                data = login_resp.json()
-                                new_jwt = data.get("token", "")
-                            except Exception:
-                                pass
-                                
-                            if not new_jwt:
-                                # Try extracting from Set-Cookie header
-                                cookies = login_resp.cookies
-                                if "token" in cookies:
-                                    new_jwt = cookies.get("token")
-                                    
-                            if new_jwt:
-                                acc.jwt = new_jwt
-                                acc.access_token = new_jwt
-                                # 再次查询
-                                new_q = api_client.get_count(new_jwt)
-                                if new_q > 0:
-                                    acc.quota = new_q
-                                    valid.append(acc)
-                                    print(f"  ✓ 重新登录成功，余额: {new_q}", flush=True)
-                                else:
-                                    print(f"  ✗ 重新登录后额度依然耗尽，移除", flush=True)
+                    if not getattr(acc, 'email', '') or not getattr(acc, 'password', ''):
+                        print("  ✗ 缺少邮箱或密码，无法重新登录，保留账号记录", flush=True)
+                        acc.quota = 0
+                    else:
+                        success, new_jwt = do_relogin(acc)
+                        if success:
+                            acc.jwt = new_jwt
+                            acc.access_token = new_jwt
+                            acc.refresh_token = new_jwt
+                            new_q = api_client.get_count(new_jwt)
+                            if new_q > 0:
+                                acc.quota = new_q
+                                print(f"  ✓ 重新登录成功，余额: {new_q}", flush=True)
                             else:
-                                print(f"  ✗ 重新登录未返回 Token，移除", flush=True)
+                                acc.quota = 0
+                                print(f"  ✗ 重新登录后额度依然耗尽，保留账号", flush=True)
                         else:
-                            print(f"  ✗ 重新登录失败 (HTTP {login_resp.status_code})，移除", flush=True)
-                    except Exception as e:
-                        valid.append(acc)
-                        print(f"  ? 重新登录网络异常，保留账号 quota={acc.quota}", flush=True)
+                            acc.quota = 0
+                            print(f"  ✗ 重新登录失败，保留账号", flush=True)
                 else:
-                    print(f"  ✗ 额度耗尽或已失效，移除", flush=True)
-            loaded_accounts = valid
-            account_store.save(valid)
-            print(f"[*] 有效账号: {len(valid)} 个", flush=True)
+                    acc.quota = 0
+                    print(f"  ✗ 额度耗尽或已失效，保留账号记录", flush=True)
+
+            # 保存全部账号（不再丢弃任何记录）
+            account_store.save(loaded_accounts)
+            active_count = len([a for a in loaded_accounts if a.quota >= 2])
+            print(f"[*] 活跃账号: {active_count} 个，总记录: {len(loaded_accounts)} 个", flush=True)
 
             with p.lock:
-                for acc in loaded_accounts[:pool_size]:
-                    p.used_pool.append(acc)
+                # 把所有账号全塞进去，`acquire` 会自动挑 quota>=cost 的
+                p.used_pool.extend(loaded_accounts)
             print(f"[*] 已从文件恢复 {p.pool_status()}", flush=True)
 
     def register_one(phase_tag: str) -> bool:
-        success, jwt = create_account()
+        success, jwt, email, password = create_account()
         if not success:
             return False
 
@@ -1485,7 +1497,7 @@ def start_pool(pool_size: int, init_count: int = 20) -> SimplePool:
             actual_quota = NORMAL_INITIAL_QUOTA
 
         print(f"[+] {phase_tag} 账号就绪，额度: {actual_quota}", flush=True)
-        acc = Account(jwt=jwt, quota=actual_quota)
+        acc = Account(email=email, password=password, jwt=jwt, acctoken=jwt, restoken=jwt, quota=actual_quota)
         if account_store:
             account_store.append(acc)
 
@@ -1526,12 +1538,12 @@ def start_pool(pool_size: int, init_count: int = 20) -> SimplePool:
 
         while True:
             try:
-                # 检查池是否低于最大值，不足则主动注册补充
+                # 检查池中活跃账号是否低于最大值，不足则主动注册补充
                 with p.lock:
-                    current = len(p.used_pool)
-                if current < pool_size:
-                    print(f"[*] 池不满 ({current}/{pool_size})，主动补充注册", flush=True)
-                    if not register_one(f"[补充 {current+1}/{pool_size}]"):
+                    active_count = len([a for a in p.used_pool if a.quota >= 2])
+                if active_count < pool_size:
+                    print(f"[*] 活跃账号不足 ({active_count}/{pool_size})，主动补充注册", flush=True)
+                    if not register_one(f"[补充 {active_count+1}/{pool_size}]"):
                         time.sleep(5)
                     else:
                         time.sleep(REGISTER_INTERVAL)  # 注册间隔，避免触发限流
