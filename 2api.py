@@ -612,6 +612,8 @@ def parse_ratio(size: str) -> str:
         "1024x1024": "1:1", "1:1": "1:1",
         "1024x1792": "9:16", "9:16": "9:16",
         "1792x1024": "16:9", "16:9": "16:9",
+        "768x1024": "3:4", "3:4": "3:4",
+        "1024x768": "4:3", "4:3": "4:3"
     }
     return size_map.get(size, "auto")
 
@@ -1034,12 +1036,15 @@ class APIClient:
 
     def generate_image(self, prompt: str, provider: str, version: str, jwt_token: str, image: str = None, images: list = None) -> Tuple[bool, str]:
         payload = {"text": prompt, "from": 1, "generationType": provider, "isInternational": True}
+        
+        # 处理不同模型对尺寸和版本的支持差异
         if version:
             payload["version"] = version
         if image:
             payload["image"] = image
         if images:
             payload["images"] = images
+            
         try:
             s = requests.Session()
             s.timeout = 5 * 60
@@ -1060,8 +1065,16 @@ class APIClient:
                 "Sec-Fetch-Site": "same-origin",
             })
             
-            # 图片生成接口不能用 curl_cffi，容易报 TLS 错误，改用普通 requests
+            # 发送生成请求
             resp = s.post(f"{CHATAIBOT_API_BASE}/image/generate", json=payload, headers=req_headers)
+            
+            # 兼容处理 403 尺寸错误 (UnsupportedImageAspectRatioError)
+            if resp.status_code == 403 and "UnsupportedImageAspectRatioError" in resp.text:
+                print(f"[-] 尺寸不支持，尝试自动修复重试 (去除版本参数/重置设置)...")
+                # 有些模型比如 midjourney-7 配合特定设置可能冲突，去掉 version 试试
+                if "version" in payload:
+                    del payload["version"]
+                resp = s.post(f"{CHATAIBOT_API_BASE}/image/generate", json=payload, headers=req_headers)
             if resp.status_code != 200 and resp.status_code != 201:
                 return False, f"HTTP {resp.status_code}: {resp.text[:100]}"
             try:
