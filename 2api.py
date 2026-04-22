@@ -1040,8 +1040,14 @@ class APIClient:
         if images:
             payload["images"] = images
         try:
-            resp = self._request("POST", f"{CHATAIBOT_API_BASE}/image/generate", json=payload, headers=self._headers(jwt_token), timeout=5*60)
-            resp.raise_for_status()
+            s = requests.Session()
+            s.timeout = 5 * 60
+            if self.proxies:
+                s.proxies.update(self.proxies)
+            # 图片生成接口不能用 curl_cffi，容易报 TLS 错误，改用普通 requests
+            resp = s.post(f"{CHATAIBOT_API_BASE}/image/generate", json=payload, headers=self._headers(jwt_token))
+            if resp.status_code != 200 and resp.status_code != 201:
+                return False, f"HTTP {resp.status_code}: {resp.text}"
             data = resp.json()
             if isinstance(data, list) and len(data) > 0:
                 url = data[0].get("imageUrl", "")
@@ -1081,7 +1087,11 @@ class APIClient:
             "chatId": chat_id,
         }
         try:
-            resp = self._request("POST", f"{CHATAIBOT_API_BASE}/message", json=payload, headers=self._headers(jwt_token), timeout=120)
+            s = requests.Session()
+            s.timeout = 120
+            if self.proxies:
+                s.proxies.update(self.proxies)
+            resp = s.post(f"{CHATAIBOT_API_BASE}/message", json=payload, headers=self._headers(jwt_token))
             if resp.status_code == 200:
                 data = resp.json()
                 return data.get("answer", "")
@@ -1098,7 +1108,11 @@ class APIClient:
         """透明代理请求到 ChatAiBot API"""
         url = f"{CHATAIBOT_API_BASE}/{path.lstrip('/')}"
         h = self._headers(jwt_token)
-        return self._request(method, url, json=body, params=params, headers=h, timeout=120)
+        s = requests.Session()
+        s.timeout = 120
+        if self.proxies:
+            s.proxies.update(self.proxies)
+        return s.request(method, url, json=body, params=params, headers=h)
 
 
 # ==========================================
