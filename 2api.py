@@ -1045,8 +1045,23 @@ class APIClient:
             s.timeout = 5 * 60
             if self.proxies:
                 s.proxies.update(self.proxies)
+                
+            # 解决 403 Forbidden 问题：必须带上高度仿真的 User-Agent 并且不暴露 Python 身份
+            req_headers = self._headers(jwt_token)
+            req_headers.update({
+                "Accept": "application/json, text/plain, */*",
+                "Content-Type": "application/json",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
+                "Sec-Ch-Ua": '"Not A(Brand";v="8", "Chromium";v="132", "Google Chrome";v="132"',
+                "Sec-Ch-Ua-Mobile": "?0",
+                "Sec-Ch-Ua-Platform": '"Windows"',
+                "Sec-Fetch-Dest": "empty",
+                "Sec-Fetch-Mode": "cors",
+                "Sec-Fetch-Site": "same-origin",
+            })
+            
             # 图片生成接口不能用 curl_cffi，容易报 TLS 错误，改用普通 requests
-            resp = s.post(f"{CHATAIBOT_API_BASE}/image/generate", json=payload, headers=self._headers(jwt_token))
+            resp = s.post(f"{CHATAIBOT_API_BASE}/image/generate", json=payload, headers=req_headers)
             if resp.status_code != 200 and resp.status_code != 201:
                 return False, f"HTTP {resp.status_code}: {resp.text[:100]}"
             try:
