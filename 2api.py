@@ -1068,13 +1068,20 @@ class APIClient:
             # 发送生成请求
             resp = s.post(f"{CHATAIBOT_API_BASE}/image/generate", json=payload, headers=req_headers)
             
-            # 兼容处理 403 尺寸错误 (UnsupportedImageAspectRatioError)
-            if resp.status_code == 403 and "UnsupportedImageAspectRatioError" in resp.text:
-                print(f"[-] 尺寸不支持，尝试自动修复重试 (去除版本参数/重置设置)...")
-                # 有些模型比如 midjourney-7 配合特定设置可能冲突，去掉 version 试试
-                if "version" in payload:
-                    del payload["version"]
-                resp = s.post(f"{CHATAIBOT_API_BASE}/image/generate", json=payload, headers=req_headers)
+            # 兼容处理 403 尺寸错误 (UnsupportedImageAspectRatioError) 或 无法使用模型错误 (CanNotUseGptImageGenerate)
+            if resp.status_code == 403:
+                if "UnsupportedImageAspectRatioError" in resp.text:
+                    print(f"[-] 尺寸不支持，尝试自动修复重试 (去除版本参数/重置设置)...")
+                    # 有些模型比如 midjourney-7 配合特定设置可能冲突，去掉 version 试试
+                    if "version" in payload:
+                        del payload["version"]
+                    resp = s.post(f"{CHATAIBOT_API_BASE}/image/generate", json=payload, headers=req_headers)
+                elif "CanNotUseGptImageGenerate" in resp.text or "CanNotUse" in resp.text:
+                    print(f"[-] 官方风控：当前账号（或免费积分）被禁止使用该高阶模型 ({provider})。尝试自动降级到基础提供商 GOOGLE 方案...")
+                    # 强行替换为免费账号大概率能用的基础模型 (如 Google Imagen / Ideogram 接口变体)
+                    payload["generationType"] = "GOOGLE"
+                    payload["version"] = "nano-banana"
+                    resp = s.post(f"{CHATAIBOT_API_BASE}/image/generate", json=payload, headers=req_headers)
             if resp.status_code != 200 and resp.status_code != 201:
                 return False, f"HTTP {resp.status_code}: {resp.text[:100]}"
             try:
