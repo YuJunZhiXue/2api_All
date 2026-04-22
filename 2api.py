@@ -1351,13 +1351,17 @@ class SimplePool:
                 acc.refresh_token = new_jwt
                 new_q = api_client.get_count(new_jwt)
                 acc.quota = new_q if new_q > 0 else 0
+                if acc.quota == 0:
+                    print(f"  [+] 登录成功但额度为 0，保留账号等待次日重置", flush=True)
             else:
                 acc.quota = 0
+                print(f"  [-] 重新登录失败，但永久保留账号记录等待次日重置 (email: {acc.email})", flush=True)
         else:
             acc.quota = q
 
         with self.lock:
             # 无论死活都放回池中，acquire 时会自动跳过 quota < cost 的账号
+            # 这样额度为0的账号就会一直躺在池子里，直到定时任务或重启时恢复额度
             self.used_pool.append(acc)
             active_count = len([a for a in self.used_pool if a.quota >= 2])
             
@@ -1594,9 +1598,25 @@ def start_pool(pool_size: int, init_count: int = 20) -> SimplePool:
                     time.sleep(15)
 
         print(f"[*] 初始化完成！{p.pool_status()}", flush=True)
+        
+        last_reset_check = time.time()
 
         while True:
             try:
+                # 每隔 30 分钟扫一遍池子里的 0 额度账号，看看官方有没有给它重置积分（应对00:00更新）
+                if time.time() - last_reset_check > 1800:
+                    last_reset_check = time.time()
+                    with p.lock:
+                        zero_quota_accounts = [a for a in p.used_pool if a.quota == 0]
+                    if zero_quota_accounts:
+                        print(f"[*] 触发定时重置检查：正在查询 {len(zero_quota_accounts)} 个零额度账号的次日恢复状态...", flush=True)
+                        for acc in zero_quota_accounts:
+                            new_q = api_client.get_count(acc.jwt)
+                            if new_q > 0:
+                                acc.quota = new_q
+                                print(f"  [+] 账号 {acc.email} 额度已由官方重置为 {new_q}，重新激活入池！", flush=True)
+                        p._save_to_file()
+
                 # 检查池中活跃账号是否低于最大值，不足则主动注册补充
                 with p.lock:
                     active_count = len([a for a in p.used_pool if a.quota >= 2])
