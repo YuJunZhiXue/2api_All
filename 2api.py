@@ -842,6 +842,7 @@ class APIClient:
         }
         if jwt_token:
             h["Cookie"] = f"token={jwt_token}"
+            h["x-authorization"] = f"Bearer {jwt_token}"
         return h
 
     def _get_current_ip(self) -> str:
@@ -1047,8 +1048,13 @@ class APIClient:
             # 图片生成接口不能用 curl_cffi，容易报 TLS 错误，改用普通 requests
             resp = s.post(f"{CHATAIBOT_API_BASE}/image/generate", json=payload, headers=self._headers(jwt_token))
             if resp.status_code != 200 and resp.status_code != 201:
-                return False, f"HTTP {resp.status_code}: {resp.text}"
-            data = resp.json()
+                return False, f"HTTP {resp.status_code}: {resp.text[:100]}"
+            try:
+                data = resp.json()
+            except Exception as je:
+                print(f"[-] 解析图片 JSON 失败: {je}, 内容: {resp.text[:200]}")
+                return False, f"Invalid JSON: {resp.text[:100]}"
+                
             if isinstance(data, list) and len(data) > 0:
                 url = data[0].get("imageUrl", "")
                 if url:
@@ -1069,8 +1075,12 @@ class APIClient:
                 headers=self._headers(jwt_token),
             )
             if resp.status_code == 200:
-                data = resp.json()
-                return data.get("id")
+                try:
+                    data = resp.json()
+                    return data.get("id")
+                except Exception:
+                    print(f"[-] create_chat_context 解析 JSON 失败: {resp.text[:200]}")
+                    return None
             print(f"[-] 创建聊天上下文失败: {resp.status_code} {resp.text[:200]}")
             return None
         except Exception as e:
@@ -1093,8 +1103,12 @@ class APIClient:
                 s.proxies.update(self.proxies)
             resp = s.post(f"{CHATAIBOT_API_BASE}/message", json=payload, headers=self._headers(jwt_token))
             if resp.status_code == 200:
-                data = resp.json()
-                return data.get("answer", "")
+                try:
+                    data = resp.json()
+                    return data.get("answer", "")
+                except Exception as je:
+                    print(f"[-] 解析 JSON 失败: {je}, 响应内容: {resp.text[:200]}")
+                    return (resp.status_code, f"Invalid JSON from server: {resp.text[:100]}")
             print(f"[-] 对话失败: {resp.status_code} {resp.text[:300]}")
             # 返回带状态码的错误元组，便于上层区分
             return (resp.status_code, resp.text[:500])
