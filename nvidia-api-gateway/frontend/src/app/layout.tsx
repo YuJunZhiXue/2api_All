@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
-import { Space_Grotesk, JetBrains_Mono } from "next/font/google";
+import { Space_Grotesk, JetBrains_Mono, Geist } from "next/font/google";
 import "./globals.css";
+import { cn } from "@/lib/utils";
+
+const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
 const spaceGrotesk = Space_Grotesk({
   variable: "--font-geist-sans",
@@ -13,8 +16,8 @@ const jetBrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "NVIDIA API GATEWAY // SYS.ADMIN",
-  description: "High-Concurrency API Key Scheduler",
+  title: "NVIDIA API 网关 // 核心控制台",
+  description: "高并发英伟达 API 聚合网关调度中心",
 };
 
 export default function RootLayout({
@@ -23,7 +26,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="zh-CN" className={cn("font-sans dark", geist.variable)}>
       <body
         className={`${spaceGrotesk.variable} ${jetBrainsMono.variable} antialiased min-h-screen relative overflow-x-hidden`}
       >
@@ -41,7 +44,7 @@ export default function RootLayout({
                 NVIDIA_GATEWAY_
               </h1>
               <p className="font-mono text-sm text-gray-500 mt-2 uppercase tracking-widest">
-                System Status: <span className="text-[#00FF41]">Online</span> // Concurrency Lock: <span className="text-[#00E5FF]">Active</span>
+                系统状态: <span className="text-[#00FF41]">在线 (ONLINE)</span> // 并发锁: <span className="text-[#00E5FF]">激活 (ACTIVE)</span>
               </p>
             </div>
             <div className="font-mono text-xs text-right text-gray-600 hidden sm:block">
