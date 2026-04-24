@@ -5,7 +5,9 @@ import (
 	"log"
 	"os"
 
+	"nvidia-api-gateway/pkg/db"
 	"nvidia-api-gateway/pkg/gateway"
+	"nvidia-api-gateway/pkg/prober"
 	"nvidia-api-gateway/pkg/scheduler"
 
 	"github.com/gofiber/fiber/v2"
@@ -15,6 +17,9 @@ import (
 
 func main() {
 	_ = godotenv.Load()
+
+	// Init SQLite Database
+	db.InitDB("gateway.db")
 
 	redisURL := os.Getenv("REDIS_URL")
 	if redisURL == "" {
@@ -37,6 +42,16 @@ func main() {
 	_ = sched.AddKey(context.Background(), "sk-nv-dummy-key-1", 10.0)
 	_ = sched.AddKey(context.Background(), "sk-nv-dummy-key-2", 5.0)
 
+	// Background Prober
+	pr := prober.NewProber(redisClient, sched)
+	go pr.Start(context.Background())
+
+	// Management API routes
+	admin := app.Group("/admin")
+	admin.Post("/keys", gateway.AddAPIKey)
+	admin.Get("/keys", gateway.GetAPIKeys)
+
+	// API Gateway route
 	app.Post("/v1/chat/completions", gw.HandleChatCompletions)
 
 	port := os.Getenv("PORT")
