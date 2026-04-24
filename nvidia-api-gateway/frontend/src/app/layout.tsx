@@ -1,23 +1,20 @@
 import type { Metadata } from "next";
-import { Space_Grotesk, JetBrains_Mono, Geist } from "next/font/google";
+import { Inter, Playfair_Display } from "next/font/google";
 import "./globals.css";
-import { cn } from "@/lib/utils";
 
-const geist = Geist({subsets:['latin'],variable:'--font-sans'});
-
-const spaceGrotesk = Space_Grotesk({
+const inter = Inter({
   variable: "--font-geist-sans",
   subsets: ["latin"],
 });
 
-const jetBrainsMono = JetBrains_Mono({
-  variable: "--font-geist-mono",
+const playfair = Playfair_Display({
+  variable: "--font-playfair-display",
   subsets: ["latin"],
 });
 
 export const metadata: Metadata = {
-  title: "NVIDIA API 网关 // 核心控制台",
-  description: "高并发英伟达 API 聚合网关调度中心",
+  title: "NVIDIA API Gateway | Enterprise Dashboard",
+  description: "Enterprise-grade high-concurrency API scheduler",
 };
 
 export default function RootLayout({
@@ -26,35 +23,49 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="zh-CN" className={cn("font-sans dark", geist.variable)}>
+    <html lang="zh-CN">
       <body
-        className={`${spaceGrotesk.variable} ${jetBrainsMono.variable} antialiased min-h-screen relative overflow-x-hidden`}
+        className={`${inter.variable} ${playfair.variable} antialiased min-h-screen relative bg-[#FAFAFA] text-[#111111]`}
       >
-        {/* Decorative Grid Corner Accents */}
-        <div className="fixed top-0 left-0 w-8 h-8 border-t-2 border-l-2 border-[#00FF41] m-4 z-10 opacity-70"></div>
-        <div className="fixed top-0 right-0 w-8 h-8 border-t-2 border-r-2 border-[#00FF41] m-4 z-10 opacity-70"></div>
-        <div className="fixed bottom-0 left-0 w-8 h-8 border-b-2 border-l-2 border-[#00FF41] m-4 z-10 opacity-70"></div>
-        <div className="fixed bottom-0 right-0 w-8 h-8 border-b-2 border-r-2 border-[#00FF41] m-4 z-10 opacity-70"></div>
-        
-        <main className="relative z-20 max-w-7xl mx-auto p-8 pt-12">
-          <header className="mb-12 flex justify-between items-end border-b border-[#27272A] pb-4">
+        <div className="flex min-h-screen">
+          {/* Elegant Sidebar */}
+          <aside className="w-64 border-r border-[#E5E5E5] bg-white hidden md:flex flex-col justify-between p-8">
             <div>
-              <h1 className="text-4xl font-bold tracking-tighter text-[#00FF41] uppercase flex items-center gap-3">
-                <div className="w-3 h-8 bg-[#00FF41] animate-pulse"></div>
-                NVIDIA_GATEWAY_
-              </h1>
-              <p className="font-mono text-sm text-gray-500 mt-2 uppercase tracking-widest">
-                系统状态: <span className="text-[#00FF41]">在线 (ONLINE)</span> // 并发锁: <span className="text-[#00E5FF]">激活 (ACTIVE)</span>
-              </p>
+              <div className="mb-12">
+                <div className="w-8 h-8 bg-black mb-4"></div>
+                <h1 className="text-xl font-serif font-semibold tracking-tight leading-tight">Nvidia<br/>Gateway</h1>
+                <p className="text-xs text-gray-500 mt-2 uppercase tracking-widest font-medium">Enterprise Edition</p>
+              </div>
+              <nav className="space-y-4 text-sm font-medium">
+                <a href="#" className="block text-black">系统大盘 (Dashboard)</a>
+                <a href="#" className="block text-gray-400 hover:text-black transition-colors">密钥管理 (API Keys)</a>
+                <a href="#" className="block text-gray-400 hover:text-black transition-colors">偏好设置 (Settings)</a>
+              </nav>
             </div>
-            <div className="font-mono text-xs text-right text-gray-600 hidden sm:block">
-              <div>V 2.0.4.BUILD_1092</div>
-              <div>LOC: /ADMIN/SYS</div>
+            <div className="text-xs text-gray-400">
+              V 2.0.4.BUILD_1092
             </div>
-          </header>
-          
-          {children}
-        </main>
+          </aside>
+
+          {/* Main Content Area */}
+          <main className="flex-1 max-w-5xl mx-auto p-8 md:p-12 lg:p-16">
+            <header className="mb-12 flex justify-between items-center">
+              <div>
+                <h2 className="text-3xl font-serif tracking-tight">全局概览 (Overview)</h2>
+                <p className="text-sm text-gray-500 mt-1">管理并监控您的底层 API 调度系统</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="flex h-2 w-2 relative">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                </span>
+                <span className="text-xs font-medium uppercase tracking-widest text-gray-500">系统在线 (System Online)</span>
+              </div>
+            </header>
+            
+            {children}
+          </main>
+        </div>
       </body>
     </html>
   );

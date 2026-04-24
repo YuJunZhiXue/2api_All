@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import useSWR from "swr";
-import { Activity, ShieldAlert, Cpu, Terminal, Plus, ServerCrash, KeySquare, Network } from "lucide-react";
-import { motion } from "framer-motion";
+import { Activity, ShieldAlert, Cpu, ServerCrash, KeySquare, Plus, ArrowUpRight } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,7 +24,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
@@ -75,103 +75,97 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="space-y-12 pb-20 font-sans">
-      {/* 状态统计网格 (STATS GRID) */}
+    <div className="space-y-12 pb-20 font-sans max-w-full">
+      {/* 优雅的状态统计卡片 (ELEGANT STATS) */}
       <motion.section 
-        initial={{ opacity: 0, y: 20 }}
+        initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
+        transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
         className="grid grid-cols-1 md:grid-cols-3 gap-6"
       >
         <StatCard 
-          title="活跃资源池 (ACTIVE)" 
+          title="Active Resources" 
+          subtitle="可用 API 凭证"
           value={activeKeys.toString()} 
-          icon={<Activity className="text-[#00FF41]" size={24} />} 
-          color="text-[#00FF41]"
-          borderColor="border-[#00FF41]/30"
+          icon={<Activity className="text-gray-400" size={20} strokeWidth={1.5} />} 
+          trend="+2 New"
+          trendColor="text-green-600"
         />
         <StatCard 
-          title="请求受限冷却中 (429)" 
+          title="Rate Limited" 
+          subtitle="冷却中 (HTTP 429)"
           value={coolingKeys.toString()} 
-          icon={<Cpu className="text-[#FFD600]" size={24} />} 
-          color="text-[#FFD600]"
-          borderColor="border-[#FFD600]/30"
+          icon={<Cpu className="text-gray-400" size={20} strokeWidth={1.5} />} 
+          trend="Recovering"
+          trendColor="text-yellow-600"
         />
         <StatCard 
-          title="阵亡已隔离 (401/403)" 
+          title="Quarantine" 
+          subtitle="已封禁 (HTTP 401/403)"
           value={deadKeys.toString()} 
-          icon={<ServerCrash className="text-[#FF003C]" size={24} />} 
-          color="text-[#FF003C]"
-          borderColor="border-[#FF003C]/30"
+          icon={<ServerCrash className="text-gray-400" size={20} strokeWidth={1.5} />} 
+          trend="Action Req"
+          trendColor="text-red-600"
         />
       </motion.section>
 
-      {/* 核心密钥资源管理 (KEY MANAGEMENT) */}
+      {/* 极简企业级数据表格 (MINIMALIST TABLE) */}
       <motion.section 
-        initial={{ opacity: 0, y: 20 }}
+        initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, delay: 0.1 }}
-        className="bg-[#1A1A1C]/80 border border-[#27272A] relative overflow-hidden backdrop-blur-md"
+        transition={{ duration: 0.6, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
+        className="bg-white border border-[#E5E5E5] rounded-xl shadow-sm overflow-hidden"
       >
-        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-[#00E5FF] to-transparent opacity-20"></div>
-        
-        <div className="p-6 border-b border-[#27272A] flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-[#0A0A0B]/50">
+        <div className="p-6 border-b border-[#E5E5E5] flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white">
           <div>
-            <h2 className="text-xl font-bold tracking-widest text-white flex items-center gap-2">
-              <Network size={20} className="text-[#00E5FF]" />
-              资源分配序列表 <span className="text-xs text-muted-foreground font-mono ml-2 border border-border px-2 py-0.5">/RESOURCE_ALLOCATION_TABLE</span>
-            </h2>
+            <h2 className="text-xl font-serif font-medium text-black">资源分配节点 (Resource Allocation)</h2>
+            <p className="text-sm text-gray-500 mt-1">管理你的高并发 Nvidia API 分布式凭证池</p>
           </div>
           
           <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
             <DialogTrigger asChild>
               <Button 
-                variant="outline" 
-                className="bg-[#00FF41]/10 text-[#00FF41] border-[#00FF41]/50 hover:bg-[#00FF41] hover:text-black font-mono font-bold tracking-widest transition-all duration-300 rounded-none h-10"
+                className="bg-black text-white hover:bg-gray-800 rounded-lg h-10 px-5 shadow-sm transition-all"
               >
-                <Plus size={16} className="mr-2" /> 注入新密钥 (INJECT)
+                <Plus size={16} className="mr-2" /> 新增密钥 (Add Key)
               </Button>
             </DialogTrigger>
-            <DialogContent className="bg-[#1A1A1C] border-[#00FF41] text-foreground rounded-none shadow-[0_0_40px_rgba(0,255,65,0.1)] sm:max-w-[425px]">
-              {/* CRT Scanline Overlay inside modal */}
-              <div className="absolute inset-0 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%)] bg-[length:100%_4px] pointer-events-none z-10 opacity-30"></div>
-              
-              <DialogHeader className="relative z-20 border-b border-[#27272A] pb-4">
-                <DialogTitle className="font-bold text-[#00FF41] tracking-widest font-mono flex items-center gap-2">
-                  <KeySquare size={18} />
-                  &gt; 注入安全负载 (PAYLOAD)
+            <DialogContent className="bg-white border-[#E5E5E5] text-black rounded-xl sm:max-w-[480px] p-0 overflow-hidden shadow-2xl">
+              <div className="p-6 bg-[#FAFAFA] border-b border-[#E5E5E5]">
+                <DialogTitle className="font-serif text-2xl font-medium text-black">
+                  安全负载注入 (Secure Injection)
                 </DialogTitle>
-                <DialogDescription className="font-mono text-xs text-muted-foreground mt-2">
-                  输入的原始 Key 将被 AES-256-GCM 强加密落盘，系统绝不明文存储核心凭证。
+                <DialogDescription className="text-sm text-gray-500 mt-2 leading-relaxed">
+                  提供新的 Nvidia API 凭证。您的负载将在入库前通过 AES-256-GCM 进行最高级别的强加密。
                 </DialogDescription>
-              </DialogHeader>
+              </div>
               
-              <form onSubmit={handleAddKey} className="space-y-6 pt-4 relative z-20">
-                <div className="space-y-2">
-                  <label className="text-xs font-mono text-muted-foreground tracking-widest">标识符别名 (ALIAS)</label>
+              <form onSubmit={handleAddKey} className="p-6 space-y-5 bg-white">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-gray-700 uppercase tracking-wider">节点名称 (Identifier Alias)</label>
                   <Input 
                     required
                     value={newKeyForm.name}
                     onChange={e => setNewKeyForm({...newKeyForm, name: e.target.value})}
-                    className="bg-[#0A0A0B] border-[#27272A] text-foreground font-mono focus-visible:ring-0 focus-visible:border-[#00FF41] rounded-none h-12"
-                    placeholder="例如: NODE_ALPHA_01"
+                    className="bg-white border-[#E5E5E5] text-black focus-visible:ring-1 focus-visible:ring-black rounded-lg h-11 transition-all"
+                    placeholder="e.g. Production Node Alpha"
                   />
                 </div>
                 
-                <div className="space-y-2">
-                  <label className="text-xs font-mono text-muted-foreground tracking-widest">原始凭证字符串 (RAW_KEY)</label>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-gray-700 uppercase tracking-wider">凭证负载 (Raw Credential)</label>
                   <Input 
                     required
                     type="password"
                     value={newKeyForm.key}
                     onChange={e => setNewKeyForm({...newKeyForm, key: e.target.value})}
-                    className="bg-[#0A0A0B] border-[#27272A] text-foreground font-mono focus-visible:ring-0 focus-visible:border-[#00FF41] rounded-none h-12"
+                    className="bg-white border-[#E5E5E5] text-black focus-visible:ring-1 focus-visible:ring-black rounded-lg h-11 transition-all font-mono"
                     placeholder="sk-nv-..."
                   />
                 </div>
                 
-                <div className="space-y-2">
-                  <label className="text-xs font-mono text-muted-foreground tracking-widest">调度权重乘数 (WEIGHT)</label>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-gray-700 uppercase tracking-wider">流量权重 (Traffic Weight)</label>
                   <Input 
                     required
                     type="number"
@@ -179,71 +173,73 @@ export default function Dashboard() {
                     min="0.1"
                     value={newKeyForm.weight}
                     onChange={e => setNewKeyForm({...newKeyForm, weight: e.target.value})}
-                    className="bg-[#0A0A0B] border-[#27272A] text-[#00E5FF] font-mono focus-visible:ring-0 focus-visible:border-[#00FF41] rounded-none h-12"
+                    className="bg-white border-[#E5E5E5] text-black focus-visible:ring-1 focus-visible:ring-black rounded-lg h-11 transition-all"
                   />
                 </div>
                 
-                <Button 
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="w-full h-12 bg-[#00FF41] text-black font-bold font-mono tracking-widest hover:bg-[#00FF41]/80 disabled:opacity-50 transition-colors rounded-none mt-2"
-                >
-                  {isSubmitting ? "加密写入中 (ENCRYPTING)..." : "执行注入 (EXECUTE)"}
-                </Button>
+                <div className="pt-2">
+                  <Button 
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="w-full h-11 bg-black text-white font-medium hover:bg-gray-800 disabled:opacity-50 transition-all rounded-lg"
+                  >
+                    {isSubmitting ? "加密写入中 (Encrypting Payload)..." : "确认注入 (Confirm & Save)"}
+                  </Button>
+                </div>
               </form>
             </DialogContent>
           </Dialog>
         </div>
 
         <div className="overflow-x-auto">
-          <Table className="font-mono text-sm">
-            <TableHeader className="bg-[#0A0A0B] border-b border-[#27272A]">
-              <TableRow className="hover:bg-transparent border-none">
-                <TableHead className="font-normal text-muted-foreground tracking-widest py-4">ID</TableHead>
-                <TableHead className="font-normal text-muted-foreground tracking-widest">别名 (ALIAS)</TableHead>
-                <TableHead className="font-normal text-muted-foreground tracking-widest">权重 (WEIGHT)</TableHead>
-                <TableHead className="font-normal text-muted-foreground tracking-widest">实时状态 (STATUS)</TableHead>
-                <TableHead className="font-normal text-muted-foreground tracking-widest text-right">时间戳 (TIMESTAMP)</TableHead>
+          <Table>
+            <TableHeader className="bg-[#FAFAFA]">
+              <TableRow className="hover:bg-transparent border-[#E5E5E5]">
+                <TableHead className="font-medium text-xs text-gray-500 uppercase tracking-wider py-4 pl-6">ID</TableHead>
+                <TableHead className="font-medium text-xs text-gray-500 uppercase tracking-wider">Alias</TableHead>
+                <TableHead className="font-medium text-xs text-gray-500 uppercase tracking-wider">Weight</TableHead>
+                <TableHead className="font-medium text-xs text-gray-500 uppercase tracking-wider">Status</TableHead>
+                <TableHead className="font-medium text-xs text-gray-500 uppercase tracking-wider text-right pr-6">Timestamp</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {error && (
                 <TableRow>
-                  <TableCell colSpan={5} className="h-32 text-center text-[#FF003C] border-none">
-                    [FATAL] ERR_CONNECTION_REFUSED: 无法连接至底层网关引擎
+                  <TableCell colSpan={5} className="h-32 text-center text-red-600 border-none">
+                    Connection Refused: Backend gateway unreachable.
                   </TableCell>
                 </TableRow>
               )}
               {!keys && !error && (
                 <TableRow>
-                  <TableCell colSpan={5} className="h-32 text-center text-muted-foreground border-none">
+                  <TableCell colSpan={5} className="h-32 text-center text-gray-400 border-none">
                     <span className="inline-flex items-center gap-2">
-                      <Terminal size={16} className="animate-pulse" />
-                      INITIALIZING_DATA_STREAM...
+                      <div className="w-4 h-4 border-2 border-gray-300 border-t-black rounded-full animate-spin"></div>
+                      Loading Resources...
                     </span>
                   </TableCell>
                 </TableRow>
               )}
               
               {keys?.map((key) => (
-                <TableRow key={key.ID} className="border-b border-[#27272A]/50 hover:bg-[#222225] transition-colors group">
-                  <TableCell className="text-muted-foreground py-4">#{key.ID.toString().padStart(4, '0')}</TableCell>
-                  <TableCell className="text-foreground font-bold">{key.Name || "UNNAMED_NODE"}</TableCell>
-                  <TableCell className="text-[#00E5FF]">{key.Weight.toFixed(1)}</TableCell>
+                <TableRow key={key.ID} className="border-[#E5E5E5] hover:bg-[#FAFAFA] transition-colors group">
+                  <TableCell className="text-gray-400 pl-6 font-mono text-xs">#{key.ID.toString().padStart(4, '0')}</TableCell>
+                  <TableCell className="text-black font-medium">{key.Name || "Unnamed Node"}</TableCell>
+                  <TableCell className="text-gray-600">{key.Weight.toFixed(1)}</TableCell>
                   <TableCell>
                     <StatusBadge status={key.Status} />
                   </TableCell>
-                  <TableCell className="text-muted-foreground text-right">{new Date(key.CreatedAt).toLocaleString('zh-CN')}</TableCell>
+                  <TableCell className="text-gray-500 text-right pr-6 text-sm">{new Date(key.CreatedAt).toLocaleString('zh-CN', { dateStyle: 'medium', timeStyle: 'short' })}</TableCell>
                 </TableRow>
               ))}
               
               {keys?.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={5} className="h-48 text-center text-muted-foreground border-none">
-                    <div className="flex flex-col items-center justify-center">
-                      <ShieldAlert size={32} className="mb-4 opacity-50 text-[#FFD600]" />
-                      <p>未探测到活跃资源 (NO_RESOURCES_DETECTED)</p>
-                      <p className="text-xs opacity-50 mt-1">请点击右上角注入新的 Nvidia API 凭证</p>
+                  <TableCell colSpan={5} className="h-48 text-center text-gray-500 border-none bg-[#FAFAFA]/50">
+                    <div className="flex flex-col items-center justify-center max-w-sm mx-auto">
+                      <KeySquare size={32} className="mb-4 text-gray-300" strokeWidth={1} />
+                      <p className="font-medium text-gray-700">No resources allocated</p>
+                      <p className="text-sm mt-1 text-center">Your gateway is empty. Add your first Nvidia API credential to start routing traffic.</p>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -256,48 +252,54 @@ export default function Dashboard() {
   );
 }
 
-// 子组件: 数据统计卡片 (StatCard)
-function StatCard({ title, value, icon, color, borderColor }: { title: string, value: string, icon: React.ReactNode, color: string, borderColor: string }) {
+// 子组件: 优雅的数据统计卡片 (Elegant StatCard)
+function StatCard({ title, subtitle, value, icon, trend, trendColor }: { title: string, subtitle: string, value: string, icon: React.ReactNode, trend: string, trendColor: string }) {
   return (
-    <Card className={`bg-[#1A1A1C] border ${borderColor} rounded-none relative overflow-hidden group shadow-none`}>
-      <div className={`absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-current to-transparent opacity-5 group-hover:opacity-15 transition-opacity duration-500 ${color}`}></div>
-      <div className={`absolute left-0 top-0 h-full w-1 ${color.replace('text-', 'bg-')} opacity-80`}></div>
-      
-      <CardContent className="p-6">
-        <div className="flex justify-between items-start mb-6">
-          <h3 className="text-xs font-mono text-muted-foreground tracking-widest">{title}</h3>
+    <Card className="bg-white border-[#E5E5E5] rounded-xl shadow-sm hover:shadow-md transition-shadow duration-300 overflow-hidden">
+      <CardHeader className="flex flex-row items-center justify-between pb-2 pt-6 px-6">
+        <div>
+          <CardTitle className="text-sm font-medium text-gray-900">{title}</CardTitle>
+          <p className="text-xs text-gray-500 mt-1">{subtitle}</p>
+        </div>
+        <div className="p-2 bg-[#FAFAFA] rounded-md border border-[#E5E5E5]">
           {icon}
         </div>
-        <div className={`text-6xl font-bold tracking-tighter ${color} font-mono drop-shadow-[0_0_15px_rgba(currentcolor,0.3)]`}>
-          {value.padStart(3, '0')}
+      </CardHeader>
+      <CardContent className="px-6 pb-6 pt-4 flex items-end justify-between">
+        <div className="text-5xl font-serif font-medium tracking-tight text-black">
+          {value}
+        </div>
+        <div className={`flex items-center text-xs font-medium ${trendColor}`}>
+          {trend}
+          <ArrowUpRight size={14} className="ml-1" />
         </div>
       </CardContent>
     </Card>
   );
 }
 
-// 子组件: 状态徽章 (StatusBadge)
+// 子组件: 极简状态徽章 (Minimalist StatusBadge)
 function StatusBadge({ status }: { status: string }) {
   if (status === "Active") {
     return (
-      <Badge variant="outline" className="rounded-none bg-[#00FF41]/10 text-[#00FF41] border-[#00FF41]/40 px-2 py-0.5 font-mono tracking-wider hover:bg-[#00FF41]/20">
-        <span className="w-1.5 h-1.5 rounded-none bg-[#00FF41] animate-pulse glow-green mr-2 inline-block"></span>
-        ACTIVE
+      <Badge variant="outline" className="rounded-full bg-green-50 text-green-700 border-green-200 px-2.5 py-0.5 text-xs font-medium shadow-sm">
+        <span className="w-1.5 h-1.5 rounded-full bg-green-500 mr-2 inline-block"></span>
+        Active
       </Badge>
     );
   }
   if (status === "Dead") {
     return (
-      <Badge variant="outline" className="rounded-none bg-[#FF003C]/10 text-[#FF003C] border-[#FF003C]/40 px-2 py-0.5 font-mono tracking-wider hover:bg-[#FF003C]/20">
-        <span className="w-1.5 h-1.5 rounded-none bg-[#FF003C] glow-red mr-2 inline-block"></span>
-        DEAD
+      <Badge variant="outline" className="rounded-full bg-red-50 text-red-700 border-red-200 px-2.5 py-0.5 text-xs font-medium shadow-sm">
+        <span className="w-1.5 h-1.5 rounded-full bg-red-500 mr-2 inline-block"></span>
+        Quarantine
       </Badge>
     );
   }
   return (
-    <Badge variant="outline" className="rounded-none bg-[#FFD600]/10 text-[#FFD600] border-[#FFD600]/40 px-2 py-0.5 font-mono tracking-wider hover:bg-[#FFD600]/20">
-      <span className="w-1.5 h-1.5 rounded-none bg-[#FFD600] glow-yellow mr-2 inline-block"></span>
-      COOLING
+    <Badge variant="outline" className="rounded-full bg-yellow-50 text-yellow-700 border-yellow-200 px-2.5 py-0.5 text-xs font-medium shadow-sm">
+      <span className="w-1.5 h-1.5 rounded-full bg-yellow-500 mr-2 inline-block"></span>
+      Cooling
     </Badge>
   );
 }
