@@ -11,64 +11,56 @@
 }
 
 :root {
-  /* Avant-Garde Dark Grid Theme */
-  --background: #050505;
-  --foreground: #EAEAEA;
+  /* Premium Modern Dark Theme (Linear / Vercel style) */
+  --background: #000000;
+  --foreground: #EDEDED;
   
-  --border: #1F1F1F;
+  --border: #222222;
   --surface: #0A0A0A;
   --surface-hover: #141414;
   
-  /* Desaturated, raw colors */
-  --accent-green: #34d399;
-  --accent-blue: #60a5fa;
-  --accent-red: #f87171;
-  --accent-yellow: #fbbf24;
-  
-  /* shadcn variables override for brutalist dark mode */
   --card: #0A0A0A;
-  --card-foreground: #EAEAEA;
+  --card-foreground: #EDEDED;
   --popover: #0A0A0A;
-  --popover-foreground: #EAEAEA;
-  --primary: #EAEAEA;
-  --primary-foreground: #050505;
-  --secondary: #141414;
-  --secondary-foreground: #EAEAEA;
-  --muted: #141414;
-  --muted-foreground: #888888;
-  --accent: #141414;
-  --accent-foreground: #EAEAEA;
-  --destructive: #450a0a;
-  --input: #1F1F1F;
-  --ring: #EAEAEA;
-  --radius: 0rem;
+  --popover-foreground: #EDEDED;
+  --primary: #FFFFFF;
+  --primary-foreground: #000000;
+  --secondary: #171717;
+  --secondary-foreground: #EDEDED;
+  --muted: #171717;
+  --muted-foreground: #A1A1AA;
+  --accent: #171717;
+  --accent-foreground: #EDEDED;
+  --destructive: #7f1d1d;
+  --destructive-foreground: #fecaca;
+  --input: #222222;
+  --ring: #EDEDED;
+  --radius: 0.5rem; /* Sleek rounded corners */
 }
 
 body {
   font-family: var(--font-sans);
   background-color: var(--background);
   color: var(--foreground);
-  /* Absolute geometric grid */
-  background-image: 
-    linear-gradient(to right, #111 1px, transparent 1px),
-    linear-gradient(to bottom, #111 1px, transparent 1px);
-  background-size: 4rem 4rem;
-  background-position: center center;
+  /* Elegant ambient glow */
+  background-image: radial-gradient(ellipse at top center, rgba(255, 255, 255, 0.05) 0%, transparent 60%);
+  background-attachment: fixed;
 }
 
 /* Custom Scrollbar */
 ::-webkit-scrollbar {
-  width: 2px;
-  height: 2px;
+  width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: var(--background);
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
   background: #333;
+  border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--foreground);
+  background: #555;
 }
 
 @theme inline {
