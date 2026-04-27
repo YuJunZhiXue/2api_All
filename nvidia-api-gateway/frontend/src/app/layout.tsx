@@ -25,7 +25,7 @@ export default function RootLayout({
   return (
     <html lang="zh-CN" className="dark">
       <body
-        className={`${inter.variable} ${spaceGrotesk.variable} antialiased min-h-screen relative bg-[#050505] text-[#EAEAEA]`}
+        className={`${inter.variable} ${spaceGrotesk.variable} antialiased min-h-screen relative`}
       >
         {children}
       </body>

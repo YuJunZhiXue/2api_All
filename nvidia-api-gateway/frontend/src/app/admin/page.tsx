@@ -123,13 +123,13 @@ export default function Dashboard() {
           </div>
           
           <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-            <DialogTrigger asChild>
+            <DialogTrigger render={
               <Button 
                 className="bg-white text-black hover:bg-gray-200 rounded-lg h-10 px-5 transition-all font-medium text-sm shadow-md"
               >
-                <Plus size={16} className="mr-2" /> 新增密钥
+                <Plus size={16} className="mr-2" /> Add Key
               </Button>
-            </DialogTrigger>
+            } />
             <DialogContent className="bg-[#0A0A0A] border-[#222222] text-[#EDEDED] rounded-xl sm:max-w-[480px] p-0 overflow-hidden shadow-2xl">
               <div className="p-6 border-b border-[#222222] bg-[#111]">
                 <DialogTitle className="font-display text-xl font-semibold text-[#EDEDED]">

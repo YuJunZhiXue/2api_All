@@ -17,19 +17,15 @@ export const metadata: Metadata = {
   description: "Avant-Garde API Scheduler",
 };
 
-export default function RootLayout({
+export default function AdminLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="zh-CN" className="dark">
-      <body
-        className={`${inter.variable} ${spaceGrotesk.variable} antialiased min-h-screen relative`}
-      >
-        <div className="flex min-h-screen">
-          {/* Sleek Sidebar */}
-          <aside className="w-64 border-r border-[#222222] bg-[#000000] hidden md:flex flex-col justify-between p-8 relative">
+    <div className="flex min-h-screen">
+      {/* Sleek Sidebar */}
+      <aside className="w-64 border-r border-[#222222] bg-[#000000] hidden md:flex flex-col justify-between p-8 relative">
             <div>
               <div className="mb-12">
                 <div className="w-8 h-8 rounded-lg bg-gradient-to-b from-white to-[#CCC] mb-6 flex items-center justify-center shadow-[0_0_20px_rgba(255,255,255,0.15)]">
@@ -68,8 +64,6 @@ export default function RootLayout({
             
             {children}
           </main>
-        </div>
-      </body>
-    </html>
+      </div>
   );
 }
