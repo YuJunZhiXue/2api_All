@@ -21,7 +21,6 @@ import threading
 import time
 import sys
 from pathlib import Path
-import requests
 from typing import Optional, List, Tuple, Dict, Any
 from dataclasses import dataclass
 from datetime import datetime
@@ -31,6 +30,147 @@ from waitress import serve
 
 import asyncio
 
+# ==========================================
+# 免费自研算力 (DrissionPage 本地幽灵浏览器 V8 引擎)
+# ==========================================
+class TokenHarvester:
+    def __init__(self):
+        self.page = None
+        self._lock = threading.Lock()
+
+    def get_token(self, site_key: str) -> str:
+        with self._lock:
+            try:
+                from DrissionPage import ChromiumPage, ChromiumOptions
+            except ImportError:
+                print("[-] 缺少 DrissionPage，请先执行: pip install DrissionPage")
+                return ""
+
+            if not self.page:
+                try:
+                    print("[*] 小代码酱正在唤醒本地幽灵 V8 引擎 (DrissionPage)...")
+                    co = ChromiumOptions()
+                    co.headless()  # 无头幽灵模式，完全不可见
+                    co.auto_port() # 避免端口冲突
+                    co.set_argument('--incognito') # 隐身模式，干净环境
+                    # 关键突破：强制对齐 User-Agent，否则 ReCAPTCHA 会因为生成和使用的 UA 不匹配直接封杀 Token！
+                    ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36"
+                    co.set_user_agent(ua)
+                    
+                    # 适配 Linux/Mac/Windows 环境，如果本地找不到浏览器，则需要手动指定
+                    import sys
+                    import os
+                    if sys.platform.startswith("linux"):
+                        possible_paths = [
+                            "/usr/bin/google-chrome",
+                            "/usr/bin/chromium-browser",
+                            "/usr/bin/chromium",
+                            "/opt/google/chrome/google-chrome"
+                        ]
+                        for p in possible_paths:
+                            if os.path.exists(p):
+                                co.set_browser_path(p)
+                                break
+                    elif sys.platform.startswith("win"):
+                        possible_paths = [
+                            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+                            r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+                            r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+                            r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+                        ]
+                        for p in possible_paths:
+                            if os.path.exists(p):
+                                co.set_browser_path(p)
+                                break
+                                
+                    # 添加无沙盒参数，防止在 root 或 docker 环境下崩溃
+                    co.set_argument('--no-sandbox')
+                    co.set_argument('--disable-gpu')
+                    co.set_argument('--disable-dev-shm-usage')
+                    
+                    self.page = ChromiumPage(co)
+                    
+                    # 为了应对某些弱网或慢速系统环境，给页面设定超时并捕获
+                    self.page.set.timeouts(page_load=30, script=25)
+                    # 访问目标域以满足 ReCAPTCHA 的域名白名单
+                    self.page.get("https://chataibot.pro/app/auth/sign-up?variant=new")
+                except Exception as e:
+                    print(f"[-] 幽灵引擎唤醒失败 (请确保本地已安装 Chrome/Edge): {e}")
+                    return ""
+
+            print("[*] 正在通过本地真实 V8 引擎进行硬件级指纹计算 (绕过 ReCAPTCHA v3)...")
+            
+            # 为了确保 Google 的网络脚本有足够的时间下载，我们主动使用隐式等待
+            self.page.wait.load_start()
+            self.page.wait(2)
+            
+            # 改进后的注入脚本，专门应对弱网加载慢或者多次加载失败的情况
+            js_inject = f"""
+            return new Promise((resolve, reject) => {{
+                // 放宽看门狗到 25 秒
+                const watchdog = setTimeout(() => {{ reject("JS Watchdog Timeout"); }}, 25000);
+                
+                function doExecute() {{
+                    try {{
+                        window.grecaptcha.execute('{site_key}', {{action: 'submit'}})
+                            .then(res => {{ clearTimeout(watchdog); resolve(res); }})
+                            .catch(err => {{ clearTimeout(watchdog); reject("Execute Error: " + err); }});
+                    }} catch (e) {{
+                        clearTimeout(watchdog);
+                        reject("Try-Catch Error: " + e);
+                    }}
+                }}
+
+                if (window.grecaptcha && window.grecaptcha.execute) {{
+                    doExecute();
+                }} else {{
+                    let script = document.createElement('script');
+                    // 添加额外的参数强制绕过缓存，应对某些奇怪的被墙缓存
+                    script.src = 'https://www.google.com/recaptcha/api.js?render={site_key}&t=' + Date.now();
+                    script.onload = () => {{
+                        if (window.grecaptcha) {{
+                            window.grecaptcha.ready(() => {{
+                                doExecute();
+                            }});
+                        }} else {{
+                            clearTimeout(watchdog);
+                            reject("grecaptcha object not found after onload");
+                        }}
+                    }};
+                    script.onerror = (err) => {{
+                        clearTimeout(watchdog);
+                        reject("Script load error. 可能被墙或代理不通。");
+                    }};
+                    document.head.appendChild(script);
+                }}
+            }});
+            """
+            try:
+                # 运行注入脚本，将 Python 层面的超时时间放宽到 30 秒
+                token = self.page.run_js(js_inject, timeout=30)
+                if token:
+                    print(f"[+] 幽灵 V8 计算成功！获取真实高分 Token: {token[:30]}...")
+                    return token
+                else:
+                    print("[-] Token 计算返回为空")
+                    return ""
+            except Exception as e:
+                print(f"[-] 幽灵引擎执行异常，正在重置: {e}")
+                try:
+                    self.page.quit()
+                except:
+                    pass
+                self.page = None
+                return ""
+
+harvester = TokenHarvester()
+
+def get_free_recaptcha_token(site_key: str) -> str:
+    """
+    通过 DrissionPage 调用本地真实浏览器获取高分 Token，解决 400 报错。
+    """
+    return harvester.get_token(site_key)
+
 # curl_cffi 用于 mail.chatgpt.org.uk 邮箱（模仿 xxx3.py）
 try:
     from curl_cffi import requests as cffi_requests
@@ -38,6 +178,9 @@ try:
 except ImportError:
     HAS_CFFI = False
     print("[!] curl_cffi 未安装，邮箱将使用 requests 降级模式（pip install curl_cffi）")
+
+# 引入标准的 requests 库供打码平台调用
+import requests
 
 try:
     from camoufox.async_api import AsyncCamoufox
@@ -469,6 +612,8 @@ def parse_ratio(size: str) -> str:
         "1024x1024": "1:1", "1:1": "1:1",
         "1024x1792": "9:16", "9:16": "9:16",
         "1792x1024": "16:9", "16:9": "16:9",
+        "768x1024": "3:4", "3:4": "3:4",
+        "1024x768": "4:3", "4:3": "4:3"
     }
     return size_map.get(size, "auto")
 
@@ -665,30 +810,47 @@ class APIClient:
 
     def __init__(self, proxies: Optional[Dict[str, str]] = None):
         # 优先用 curl_cffi 伪装浏览器，绕过反爬虫
+        self.proxies = proxies
         if HAS_CFFI:
-            self.http_client = cffi_requests.Session(proxies=proxies, impersonate="chrome")
             print("[*] 使用 curl_cffi 模拟浏览器（Chrome）", flush=True)
         else:
-            self.http_client = requests.Session()
-            if proxies:
-                self.http_client.proxies.update(proxies)
             print("[!] curl_cffi 未安装，降级使用 requests（可能被反爬虫拒绝）", flush=True)
-        self.proxies = proxies
+
+    def _request(self, method: str, url: str, **kwargs):
+        if self.proxies:
+            kwargs["proxies"] = self.proxies
+        if HAS_CFFI:
+            kwargs["impersonate"] = "chrome"
+            return cffi_requests.request(method, url, **kwargs)
+        else:
+            return requests.request(method, url, **kwargs)
 
     def _headers(self, jwt_token: str = "") -> Dict[str, str]:
         h = {
+            "Accept": "application/json, text/plain, */*",
+            "Accept-Encoding": "gzip, deflate, br, zstd",
+            "Accept-Language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7",
             "Content-Type": "application/json",
-            "x-distribution-channel": "web",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/146.0.0.0 Safari/537.36",
+            "Origin": "https://chataibot.pro",
+            "Referer": "https://chataibot.pro/app/auth/sign-up?variant=new",
+            "Sec-Ch-Ua": '"Not A(Brand";v="8", "Chromium";v="132", "Google Chrome";v="132"',
+            "Sec-Ch-Ua-Mobile": "?0",
+            "Sec-Ch-Ua-Platform": '"Windows"',
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "same-origin",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
+            "x-distribution-channel": "web"
         }
         if jwt_token:
             h["Cookie"] = f"token={jwt_token}"
+            h["x-authorization"] = f"Bearer {jwt_token}"
         return h
 
     def _get_current_ip(self) -> str:
         """获取当前出口 IP（用于日志显示代理地址）"""
         try:
-            resp = self.http_client.get("https://api.ipify.org?format=json", timeout=5)
+            resp = self._request("GET", "https://api.ipify.org?format=json", timeout=5)
             if resp.status_code == 200:
                 return resp.json().get("ip", "")
         except Exception:
@@ -698,46 +860,97 @@ class APIClient:
     # --- 注册/验证 ---
 
     def send_register_request(self, email: str) -> Tuple[bool, str]:
-        password = generate_secure_password(16)
+        import time, uuid
+        password = email  # LO指令：密码使用邮箱
+
+        print(f"[*] 小代码酱正在为你准备最干净的底层握手协议...")
+
+        # 将 DrissionPage 的代理池挂载与 curl_cffi 同步，防止本地直接裸连 Google 导致 JS 被墙！
+        proxy_server = None
+        if reg_proxy_pool:
+            raw = reg_proxy_pool.next_one_raw()
+            if raw:
+                addr, kind = raw
+                proxy_server = f"socks5://{addr}" if kind == "socks5" else f"http://{addr}"
+        elif global_proxy_url:
+            proxy_server = global_proxy_url
+            
+        if proxy_server:
+            # 通过环境变量传递给 DrissionPage 内部，确保它能在生成 Token 时穿透防火墙
+            import os
+            os.environ['http_proxy'] = proxy_server
+            os.environ['https_proxy'] = proxy_server
+
+        # 核心突破：通过本地幽灵浏览器获取真实高分 Token
+        token = get_free_recaptcha_token("6LcPG50sAAAAANMPmPW3KjEgJQw-crAIzO6nr30r")
+        if not token:
+            print("[-] 无法获取连贯的底层 Token，跳过当前账号")
+            return False, ""
+
+        yandex_id = f"{int(time.time()*1000)}{str(uuid.uuid4().int)[:6]}"
         payload = {
-            "email": email, "password": password,
+            "email": email,
+            "password": password,
+            "captchaToken": token,
             "isAdvertisingAccepted": False,
-            "mainSiteUrl": "https://chataibot.pro/api",
-            "utmSource": "", "utmCampaign": "",
-            "connectBusiness": "", "yandexClientId": "1774357327418729490",
+            "mainSiteUrl": "https://chataibot.pro/app/auth/sign-up?variant=new",
+            "utmSource": "",
+            "utmCampaign": "",
+            "connectBusiness": "",
+            "yandexClientId": yandex_id
         }
-        # 获取当前出口 IP
+
+        # 统一通过 _headers 获取完整的、高度伪装的请求头
+        fake_headers = self._headers()
+        # 关键修正：迎合俄罗斯后端，使用严格的 en 强制加载原版报错，防止出现 {"message":""} 吞噬报错
+        fake_headers["Accept-Language"] = "en" 
+
         current_ip = self._get_current_ip()
         if current_ip:
             print(f"[*] 注册: {email} (代理IP: {current_ip})")
         else:
             print(f"[*] 注册: {email}")
 
-        print(f"[DEBUG] 发送注册请求到: {CHATAIBOT_API_BASE}/register")
-        print(f"[DEBUG] Payload: {payload}")
+        # [DEBUG] 打印被隐藏，保持控制台整洁
+        # print(f"[DEBUG] --------------------")
+        # print(f"[DEBUG] 正在发往: {CHATAIBOT_API_BASE}/register")
+        # print(f"[DEBUG] 完整请求头 (Headers):")
+        # for k, v in fake_headers.items():
+        #     print(f"[DEBUG]   {k}: {v}")
+        # print(f"[DEBUG] 完整请求体 (Payload):")
+        # print(f"[DEBUG]   {payload}")
+        # print(f"[DEBUG] --------------------")
 
         try:
-            resp = self.http_client.post(f"{CHATAIBOT_API_BASE}/register", json=payload, headers=self._headers())
-            print(f"[DEBUG] 响应状态码: {resp.status_code}")
-            print(f"[DEBUG] 响应内容: {resp.text[:500]}")
+            # 关键：使用 curl_cffi 发送请求，并且不传递 json=payload，以防止 requests 内部强制覆盖 Content-Type 和编码行为
+            # 将 payload 转换为严格的紧凑 JSON 字符串，直接作为 data 传入
+            import json
+            json_str = json.dumps(payload, separators=(',', ':'))
 
-            resp.raise_for_status()
-            if resp.json().get("success", False):
-                print("[+] 注册请求成功，等待验证码...")
+            resp = self._request("POST",
+                f"{CHATAIBOT_API_BASE}/register", 
+                data=json_str, 
+                headers=fake_headers
+            )
+
+            # print(f"[DEBUG] 响应状态码: {resp.status_code}")
+            # print(f"[DEBUG] 响应头: {dict(resp.headers)}")
+            # print(f"[DEBUG] 响应体: {resp.text}")
+
+            if resp.status_code == 200 or resp.status_code == 201:
                 return True, password
-            print(f"[-] 注册失败: {resp.text[:200]}")
-            return False, ""
+            else:
+                print(f"[-] 注册请求失败: HTTP {resp.status_code}: {resp.text}")
+                return False, ""
         except Exception as e:
-            print(f"[-] 注册请求失败: {type(e).__name__}: {e}")
-            import traceback
-            print(f"[DEBUG] 异常堆栈: {traceback.format_exc()}")
+            print(f"[-] 注册请求失败: {e}")
             return False, ""
 
     def verify_account(self, email: str, code: str) -> str:
         payload = {"email": email, "token": code, "connectBusiness": ""}
         try:
             print(f"[*] 提交验证码 [{code}]...")
-            resp = self.http_client.post(f"{CHATAIBOT_API_BASE}/register/verify", json=payload, headers=self._headers())
+            resp = self._request("POST", f"{CHATAIBOT_API_BASE}/register/verify", json=payload, headers=self._headers())
             resp.raise_for_status()
             jwt = resp.json().get("jwtToken", "")
             if jwt:
@@ -751,17 +964,44 @@ class APIClient:
 
     # --- 额度/设置 ---
 
-    def get_count(self, jwt_token: str) -> int:
-        try:
-            resp = self.http_client.get(f"{CHATAIBOT_API_BASE}/user/answers-count/v2", headers=self._headers(jwt_token))
-            resp.raise_for_status()
-            return resp.json().get("leftAnswersCount", 0)
-        except Exception:
-            return -1  # -1 表示网络错误，区别于真实额度为0
+    def get_count(self, jwt_token: str, max_retries: int = 2) -> int:
+        """
+        查询账号剩余积分。
+        为了减少网络抖动导致的大面积失败，增加短时间的超时和重试机制。
+        """
+        for attempt in range(max_retries):
+            try:
+                h = self._headers(jwt_token)
+                h["x-authorization"] = f"Bearer {jwt_token}"
+                h["Accept-Language"] = "en-US,en;q=0.9"
+                resp = self._request("GET",
+                    f"{CHATAIBOT_API_BASE}/user", 
+                    headers=h,
+                    timeout=15
+                )
+                if resp.status_code == 200:
+                    d = resp.json()
+                    if "availableTokens" in d:
+                        return d["availableTokens"]
+                    
+                    limit = d.get("freeRequestsLimit", 0)
+                    used = d.get("questionsCount", 0)
+                    return max(0, limit - used)
+                elif resp.status_code in (401, 403):
+                    print(f"    ! 账号无效或被风控 (HTTP {resp.status_code})")
+                    return 0
+                else:
+                    import time
+                    time.sleep(1)
+            except Exception as e:
+                # print(f"[DEBUG] get_count 报错: {e}")
+                import time
+                time.sleep(1)
+        return -1  # -1 表示网络错误，区别于真实额度为0
 
     def update_user_settings(self, jwt_token: str, aspect_ratio: str) -> bool:
         try:
-            resp = self.http_client.post(
+            resp = self._request("POST",
                 f"{CHATAIBOT_API_BASE}/user/update",
                 json={"settings": {"imageAspectRatio": aspect_ratio}},
                 headers=self._headers(jwt_token),
@@ -774,7 +1014,7 @@ class APIClient:
 
     def get_referrer_link(self, jwt_token: str) -> Tuple[str, str]:
         try:
-            resp = self.http_client.get(
+            resp = self._request("GET",
                 f"{CHATAIBOT_API_BASE}/user/referrer",
                 params={"isInternational": "true"},
                 headers=self._headers(jwt_token),
@@ -796,20 +1036,60 @@ class APIClient:
 
     def generate_image(self, prompt: str, provider: str, version: str, jwt_token: str, image: str = None, images: list = None) -> Tuple[bool, str]:
         payload = {"text": prompt, "from": 1, "generationType": provider, "isInternational": True}
+        
+        # 处理不同模型对尺寸和版本的支持差异
         if version:
             payload["version"] = version
         if image:
             payload["image"] = image
         if images:
             payload["images"] = images
+            
         try:
             s = requests.Session()
             s.timeout = 5 * 60
             if self.proxies:
                 s.proxies.update(self.proxies)
-            resp = s.post(f"{CHATAIBOT_API_BASE}/image/generate", json=payload, headers=self._headers(jwt_token))
-            resp.raise_for_status()
-            data = resp.json()
+                
+            # 解决 403 Forbidden 问题：必须带上高度仿真的 User-Agent 并且不暴露 Python 身份
+            req_headers = self._headers(jwt_token)
+            req_headers.update({
+                "Accept": "application/json, text/plain, */*",
+                "Content-Type": "application/json",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
+                "Sec-Ch-Ua": '"Not A(Brand";v="8", "Chromium";v="132", "Google Chrome";v="132"',
+                "Sec-Ch-Ua-Mobile": "?0",
+                "Sec-Ch-Ua-Platform": '"Windows"',
+                "Sec-Fetch-Dest": "empty",
+                "Sec-Fetch-Mode": "cors",
+                "Sec-Fetch-Site": "same-origin",
+            })
+            
+            # 发送生成请求
+            resp = s.post(f"{CHATAIBOT_API_BASE}/image/generate", json=payload, headers=req_headers)
+            
+            # 兼容处理 403 尺寸错误 (UnsupportedImageAspectRatioError) 或 无法使用模型错误 (CanNotUseGptImageGenerate)
+            if resp.status_code == 403:
+                if "UnsupportedImageAspectRatioError" in resp.text:
+                    print(f"[-] 尺寸不支持，尝试自动修复重试 (去除版本参数/重置设置)...")
+                    # 有些模型比如 midjourney-7 配合特定设置可能冲突，去掉 version 试试
+                    if "version" in payload:
+                        del payload["version"]
+                    resp = s.post(f"{CHATAIBOT_API_BASE}/image/generate", json=payload, headers=req_headers)
+                elif "CanNotUseGptImageGenerate" in resp.text or "CanNotUse" in resp.text:
+                    print(f"[-] 官方风控：当前账号（或免费积分）被禁止使用该高阶模型 ({provider})。尝试自动降级到基础提供商 GOOGLE 方案...")
+                    # 强行替换为免费账号大概率能用的基础模型 (如 Google Imagen / Ideogram 接口变体)
+                    payload["generationType"] = "GOOGLE"
+                    payload["version"] = "nano-banana"
+                    resp = s.post(f"{CHATAIBOT_API_BASE}/image/generate", json=payload, headers=req_headers)
+            if resp.status_code != 200 and resp.status_code != 201:
+                return False, f"HTTP {resp.status_code}: {resp.text[:100]}"
+            try:
+                data = resp.json()
+            except Exception as je:
+                print(f"[-] 解析图片 JSON 失败: {je}, 内容: {resp.text[:200]}")
+                return False, f"Invalid JSON: {resp.text[:100]}"
+                
             if isinstance(data, list) and len(data) > 0:
                 url = data[0].get("imageUrl", "")
                 if url:
@@ -824,14 +1104,18 @@ class APIClient:
         """创建聊天上下文，返回 chatId"""
         payload = {"title": title, "chatModel": chat_model, "from": 1}
         try:
-            resp = self.http_client.post(
+            resp = self._request("POST",
                 f"{CHATAIBOT_API_BASE}/message/context",
                 json=payload,
                 headers=self._headers(jwt_token),
             )
             if resp.status_code == 200:
-                data = resp.json()
-                return data.get("id")
+                try:
+                    data = resp.json()
+                    return data.get("id")
+                except Exception:
+                    print(f"[-] create_chat_context 解析 JSON 失败: {resp.text[:200]}")
+                    return None
             print(f"[-] 创建聊天上下文失败: {resp.status_code} {resp.text[:200]}")
             return None
         except Exception as e:
@@ -854,8 +1138,12 @@ class APIClient:
                 s.proxies.update(self.proxies)
             resp = s.post(f"{CHATAIBOT_API_BASE}/message", json=payload, headers=self._headers(jwt_token))
             if resp.status_code == 200:
-                data = resp.json()
-                return data.get("answer", "")
+                try:
+                    data = resp.json()
+                    return data.get("answer", "")
+                except Exception as je:
+                    print(f"[-] 解析 JSON 失败: {je}, 响应内容: {resp.text[:200]}")
+                    return (resp.status_code, f"Invalid JSON from server: {resp.text[:100]}")
             print(f"[-] 对话失败: {resp.status_code} {resp.text[:300]}")
             # 返回带状态码的错误元组，便于上层区分
             return (resp.status_code, resp.text[:500])
@@ -880,10 +1168,24 @@ class APIClient:
 # 数据结构
 # ==========================================
 
-@dataclass
 class Account:
-    jwt: str
-    quota: int
+    def __init__(self, email: str = "", password: str = "", jwt: str = "", access_token: str = "", refresh_token: str = "", quota: int = 65, acctoken: str = "", restoken: str = ""):
+        self.email = email
+        self.password = password
+        self.jwt = jwt or access_token or acctoken
+        self.access_token = access_token or acctoken or self.jwt
+        self.refresh_token = refresh_token or restoken or self.jwt
+        self.quota = quota
+
+    def to_dict(self) -> dict:
+        return {
+            "email": self.email,
+            "password": self.password,
+            "jwt": self.jwt, # 兼容老代码
+            "acctoken": self.access_token,
+            "restoken": self.refresh_token,
+            "quota": self.quota
+        }
 
 
 class AccountStore:
@@ -905,10 +1207,18 @@ class AccountStore:
                 data = json.load(f)
             accounts = []
             for item in data:
-                jwt = item.get("jwt", "")
+                acctoken = item.get("acctoken", item.get("access_token", item.get("jwt", "")))
+                restoken = item.get("restoken", item.get("refresh_token", ""))
                 quota = item.get("quota", 0)
-                if jwt:
-                    accounts.append(Account(jwt=jwt, quota=quota))
+                if acctoken:
+                    accounts.append(Account(
+                        email=item.get("email", ""),
+                        password=item.get("password", ""),
+                        jwt=item.get("jwt", ""),
+                        acctoken=acctoken,
+                        restoken=restoken,
+                        quota=quota
+                    ))
             print(f"[*] 从 {self.file_path} 加载了 {len(accounts)} 个账号", flush=True)
             return accounts
         except FileNotFoundError:
@@ -922,7 +1232,7 @@ class AccountStore:
         with self.lock:
             data = []
             for acc in accounts:
-                data.append({"jwt": acc.jwt, "quota": acc.quota})
+                data.append(acc.to_dict())
             try:
                 with open(self.file_path, "w", encoding="utf-8") as f:
                     json.dump(data, f, indent=2, ensure_ascii=False)
@@ -930,7 +1240,7 @@ class AccountStore:
                 print(f"[-] 保存账号文件失败: {e}", flush=True)
 
     def append(self, acc: Account):
-        """追加一个账号到文件（不覆盖已有的）"""
+        """追加一个账号到文件（不覆盖已有的）。"""
         with self.lock:
             data = []
             try:
@@ -938,7 +1248,7 @@ class AccountStore:
                     data = json.load(f)
             except (FileNotFoundError, json.JSONDecodeError):
                 data = []
-            data.append({"jwt": acc.jwt, "quota": acc.quota})
+            data.append(acc.to_dict())
             try:
                 with open(self.file_path, "w", encoding="utf-8") as f:
                     json.dump(data, f, indent=2, ensure_ascii=False)
@@ -1027,44 +1337,58 @@ class SimplePool:
                 self._waiting_count = max(0, self._waiting_count - 1)
 
     def release(self, acc: Account):
-        """释放账号：实时查余额，归还池中；耗尽则移除并触发补充注册"""
-        q = api_client.get_count(acc.jwt)
+        """释放账号：实时查余额，归还池中；耗尽则尝试重新登录"""
+        q = api_client.get_count(acc.access_token)
         if q == -1:
             # 网络错误，保留账号原有额度，直接归还
             print(f"[!] 查询余额网络错误，保留账号 (quota={acc.quota})", flush=True)
+        elif q == 0:
+            print(f"[*] 账号额度耗尽或失效，尝试重新登录...", flush=True)
+            success, new_jwt = do_relogin(acc)
+            if success:
+                acc.jwt = new_jwt
+                acc.access_token = new_jwt
+                acc.refresh_token = new_jwt
+                new_q = api_client.get_count(new_jwt)
+                acc.quota = new_q if new_q > 0 else 0
+                if acc.quota == 0:
+                    print(f"  [+] 登录成功但额度为 0，保留账号等待次日重置", flush=True)
+            else:
+                acc.quota = 0
+                print(f"  [-] 重新登录失败，但永久保留账号记录等待次日重置 (email: {acc.email})", flush=True)
         else:
             acc.quota = q
-        if acc.quota < 2:
-            print(f"[*] 账号额度耗尽 ({acc.quota})，移除并触发补充", flush=True)
-            self._save_to_file()
-            self._signal_demand()
-            return
+
         with self.lock:
+            # 无论死活都放回池中，acquire 时会自动跳过 quota < cost 的账号
+            # 这样额度为0的账号就会一直躺在池子里，直到定时任务或重启时恢复额度
             self.used_pool.append(acc)
+            active_count = len([a for a in self.used_pool if a.quota >= 2])
+            
         self._save_to_file()
-        # 如果池低于最大值，也触发补充
-        with self.lock:
-            current = len(self.used_pool)
-        if current < self.max_size:
+        
+        # 如果活跃账号数低于最大值，触发补充注册
+        if active_count < self.max_size:
             self._signal_demand()
 
     def _save_to_file(self):
-        """保存池中额度>=2的账号到文件，自动剔除耗尽账号"""
+        """保存池中所有账号到文件，不剔除耗尽账号"""
         if account_store:
             with self.lock:
-                valid = [a for a in self.used_pool if a.quota >= 2]
+                valid = list(self.used_pool)
             account_store.save(valid)
 
     def pool_status(self) -> str:
         with self.lock:
             total = sum(a.quota for a in self.used_pool)
-            return f"池中: {len(self.used_pool)}/{self.max_size}, 余额: {total}"
+            active = len([a for a in self.used_pool if a.quota >= 2])
+            return f"活跃: {active}/{self.max_size} (总账号: {len(self.used_pool)}), 余额: {total}"
 
 # ==========================================
 # 账户创建
 # ==========================================
 
-def create_account() -> Tuple[bool, str]:
+def create_account() -> Tuple[bool, str, str, str]:
     # 每次注册使用独立代理（来自代理池），实现 IP 隔离
     reg_proxies = reg_proxy_pool.next() if reg_proxy_pool and len(reg_proxy_pool) > 0 else None
     proxy_url = reg_proxies['http'] if reg_proxies else (global_proxy_url or None)
@@ -1076,36 +1400,101 @@ def create_account() -> Tuple[bool, str]:
         cur_email_session = email_session
         cur_api_client = api_client
 
-    # 优先使用浏览器注册（绕过反爬虫）
-    if HAS_CAMOUFOX:
-        print("[*] 使用 Camoufox 浏览器注册...", flush=True)
-        success, jwt = create_account_browser(cur_email_session, proxy=proxy_url)
-        if success and jwt:
-            return True, jwt
-        print("[!] 浏览器注册失败，回退到 API 注册...", flush=True)
-
-    # 回退：API 直接注册
+    # LO指令：废弃 Camoufox，全盘采用纯 Python 协议级伪装
     email_addr, _ = cur_email_session.get_email_and_token()
     if not email_addr:
-        return False, ""
+        return False, "", "", ""
 
     success, password = cur_api_client.send_register_request(email_addr)
     if not success:
-        return False, ""
+        return False, "", "", ""
 
     code = cur_email_session.get_verify_code(email_addr)
     if not code:
-        return False, ""
+        return False, "", "", ""
 
     jwt = cur_api_client.verify_account(email_addr, code)
+    
     if not jwt:
-        return False, ""
-    return True, jwt
+        # 获取真正的 JWT Token (如果注册没有返回，通过登录获取)
+        # 这个网站的鉴权不仅有 Cookie，还有 Header 的 x-authorization
+        try:
+            print(f"[*] 尝试通过登录获取 JWT Token...")
+            login_payload = {
+                "email": email_addr,
+                "password": password
+            }
+            import json
+            json_str = json.dumps(login_payload, separators=(',', ':'))
+            headers = cur_api_client._headers()
+            headers["Accept-Language"] = "en-US,en;q=0.9"
+            
+            login_resp = cur_api_client._request("POST", 
+                f"{CHATAIBOT_API_BASE}/login",
+                data=json_str,
+                headers=headers
+            )
+            if login_resp.status_code == 200 or login_resp.status_code == 201:
+                new_jwt = ""
+                try:
+                    data = login_resp.json()
+                    new_jwt = data.get("token", "")
+                except Exception:
+                    pass
+                    
+                if not new_jwt:
+                    cookies = login_resp.cookies
+                    if "token" in cookies:
+                        new_jwt = cookies.get("token")
+                        
+                if new_jwt:
+                    jwt = new_jwt
+                    print("[+] 登录成功，获取到 JWT！")
+        except Exception as e:
+            pass
+            
+    if not jwt:
+        print("    ? 注册成功但获取 JWT Token 失败，账号可能无法查询额度")
+        # 无法获取有效 Token 时直接丢弃
+        return False, "", "", ""
+        
+    return True, jwt, email_addr, password
 
 
 # ==========================================
 # 账户池启动
 # ==========================================
+
+def do_relogin(acc: Account) -> Tuple[bool, str]:
+    if not acc.email or not acc.password:
+        return False, ""
+    try:
+        login_payload = {
+            "email": acc.email,
+            "password": acc.password
+        }
+        import json
+        json_str = json.dumps(login_payload, separators=(',', ':'))
+        headers = api_client._headers()
+        headers["Accept-Language"] = "en-US,en;q=0.9"
+        
+        login_resp = api_client._request("POST", 
+            f"{CHATAIBOT_API_BASE}/login",
+            data=json_str,
+            headers=headers
+        )
+        if login_resp.status_code in (200, 201):
+            new_jwt = ""
+            try:
+                new_jwt = login_resp.json().get("token", "")
+            except Exception:
+                pass
+            if not new_jwt:
+                new_jwt = login_resp.cookies.get("token", "")
+            return bool(new_jwt), new_jwt
+        return False, ""
+    except Exception:
+        return False, ""
 
 def start_pool(pool_size: int, init_count: int = 20) -> SimplePool:
     p = SimplePool(pool_size)
@@ -1116,30 +1505,53 @@ def start_pool(pool_size: int, init_count: int = 20) -> SimplePool:
         loaded_accounts = account_store.load()
         if loaded_accounts:
             print(f"[*] 正在验证已有 {len(loaded_accounts)} 个账号的余额...", flush=True)
-            valid = []
             for acc in loaded_accounts:
-                q = api_client.get_count(acc.jwt)
+                q = api_client.get_count(acc.access_token)
                 if q > 0:
                     acc.quota = q
-                    valid.append(acc)
                     print(f"  ✓ 余额: {q}", flush=True)
                 elif q == -1:
                     # 网络错误，保留账号
-                    valid.append(acc)
-                    print(f"  ? 查询余额失败（网络），保留账号 quota={acc.quota}", flush=True)
+                    print(f"  ? 查询异常网络错误，保留账号 quota={acc.quota}", flush=True)
+                elif q == 0:
+                    # Token 可能无效或真实额度耗尽，尝试重新登录获取 Token
+                    email_str = acc.email if getattr(acc, "email", "") else "未知"
+                    print(f"  ! Token 无效或过期，尝试重新登录: {email_str}", flush=True)
+                    if not getattr(acc, 'email', '') or not getattr(acc, 'password', ''):
+                        print("  ✗ 缺少邮箱或密码，无法重新登录，保留账号记录", flush=True)
+                        acc.quota = 0
+                    else:
+                        success, new_jwt = do_relogin(acc)
+                        if success:
+                            acc.jwt = new_jwt
+                            acc.access_token = new_jwt
+                            acc.refresh_token = new_jwt
+                            new_q = api_client.get_count(new_jwt)
+                            if new_q > 0:
+                                acc.quota = new_q
+                                print(f"  ✓ 重新登录成功，余额: {new_q}", flush=True)
+                            else:
+                                acc.quota = 0
+                                print(f"  ✗ 重新登录后额度依然耗尽，保留账号", flush=True)
+                        else:
+                            acc.quota = 0
+                            print(f"  ✗ 重新登录失败，保留账号", flush=True)
                 else:
-                    print(f"  ✗ 已失效，移除", flush=True)
-            loaded_accounts = valid
-            account_store.save(valid)
-            print(f"[*] 有效账号: {len(valid)} 个", flush=True)
+                    acc.quota = 0
+                    print(f"  ✗ 额度耗尽或已失效，保留账号记录", flush=True)
+
+            # 保存全部账号（不再丢弃任何记录）
+            account_store.save(loaded_accounts)
+            active_count = len([a for a in loaded_accounts if a.quota >= 2])
+            print(f"[*] 活跃账号: {active_count} 个，总记录: {len(loaded_accounts)} 个", flush=True)
 
             with p.lock:
-                for acc in loaded_accounts[:pool_size]:
-                    p.used_pool.append(acc)
+                # 把所有账号全塞进去，`acquire` 会自动挑 quota>=cost 的
+                p.used_pool.extend(loaded_accounts)
             print(f"[*] 已从文件恢复 {p.pool_status()}", flush=True)
 
     def register_one(phase_tag: str) -> bool:
-        success, jwt = create_account()
+        success, jwt, email, password = create_account()
         if not success:
             return False
 
@@ -1148,7 +1560,7 @@ def start_pool(pool_size: int, init_count: int = 20) -> SimplePool:
             actual_quota = NORMAL_INITIAL_QUOTA
 
         print(f"[+] {phase_tag} 账号就绪，额度: {actual_quota}", flush=True)
-        acc = Account(jwt=jwt, quota=actual_quota)
+        acc = Account(email=email, password=password, jwt=jwt, acctoken=jwt, restoken=jwt, quota=actual_quota)
         if account_store:
             account_store.append(acc)
 
@@ -1186,15 +1598,31 @@ def start_pool(pool_size: int, init_count: int = 20) -> SimplePool:
                     time.sleep(15)
 
         print(f"[*] 初始化完成！{p.pool_status()}", flush=True)
+        
+        last_reset_check = time.time()
 
         while True:
             try:
-                # 检查池是否低于最大值，不足则主动注册补充
+                # 每隔 30 分钟扫一遍池子里的 0 额度账号，看看官方有没有给它重置积分（应对00:00更新）
+                if time.time() - last_reset_check > 1800:
+                    last_reset_check = time.time()
+                    with p.lock:
+                        zero_quota_accounts = [a for a in p.used_pool if a.quota == 0]
+                    if zero_quota_accounts:
+                        print(f"[*] 触发定时重置检查：正在查询 {len(zero_quota_accounts)} 个零额度账号的次日恢复状态...", flush=True)
+                        for acc in zero_quota_accounts:
+                            new_q = api_client.get_count(acc.jwt)
+                            if new_q > 0:
+                                acc.quota = new_q
+                                print(f"  [+] 账号 {acc.email} 额度已由官方重置为 {new_q}，重新激活入池！", flush=True)
+                        p._save_to_file()
+
+                # 检查池中活跃账号是否低于最大值，不足则主动注册补充
                 with p.lock:
-                    current = len(p.used_pool)
-                if current < pool_size:
-                    print(f"[*] 池不满 ({current}/{pool_size})，主动补充注册", flush=True)
-                    if not register_one(f"[补充 {current+1}/{pool_size}]"):
+                    active_count = len([a for a in p.used_pool if a.quota >= 2])
+                if active_count < pool_size:
+                    print(f"[*] 活跃账号不足 ({active_count}/{pool_size})，主动补充注册", flush=True)
+                    if not register_one(f"[补充 {active_count+1}/{pool_size}]"):
                         time.sleep(5)
                     else:
                         time.sleep(REGISTER_INTERVAL)  # 注册间隔，避免触发限流
@@ -1460,6 +1888,50 @@ def create_app(account_pool: SimplePool) -> Flask:
         err = verify_api_key()
         if err:
             return err
+            
+        try:
+            # 实时抓取网页真实模型列表
+            url = f"{CHATAIBOT_API_BASE}/models"
+            headers = {
+                "Accept": "application/json, text/plain, */*",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Origin": "https://chataibot.pro",
+                "Referer": "https://chataibot.pro/",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36"
+            }
+            s = requests.Session()
+            s.timeout = 10
+            if reg_proxy_pool:
+                raw = reg_proxy_pool.next_one_raw()
+                if raw:
+                    addr, kind = raw
+                    proxy_url = f"socks5://{addr}" if kind == "socks5" else f"http://{addr}"
+                    s.proxies.update({"http": proxy_url, "https": proxy_url})
+            elif global_proxy_url:
+                s.proxies.update({"http": global_proxy_url, "https": global_proxy_url})
+                
+            resp = s.get(url, headers=headers)
+            if resp.status_code == 200:
+                data = resp.json()
+                models = []
+                # 解析网页真实模型组
+                groups = data.get("modelsGroup", {})
+                for group_name, group_data in groups.items():
+                    for item in group_data.get("models", []):
+                        mid = item.get("model")
+                        if mid:
+                            models.append({"id": mid, "object": "model", "created": 1700000000, "owned_by": f"chataibot-{group_name.lower()}"})
+                
+                # 补充图片模型（由于网页可能拆分接口，为了稳妥，同时保留内置的图片模型）
+                for mid in IMAGE_MODEL_ROUTER:
+                    if not any(m["id"] == mid for m in models):
+                        models.append({"id": mid, "object": "model", "created": 1700000000, "owned_by": "chataibot-image"})
+                        
+                return jsonify({"object": "list", "data": models}), 200
+        except Exception as e:
+            print(f"[-] 抓取真实模型列表失败: {e}，回退到内置列表")
+
+        # 失败时回退到内置的硬编码列表
         models = []
         for mid in IMAGE_MODEL_ROUTER:
             models.append({"id": mid, "object": "model", "created": 1700000000, "owned_by": "chataibot-image"})
